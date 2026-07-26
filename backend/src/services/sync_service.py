@@ -3,7 +3,7 @@
 import hashlib
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession

@@ -19,7 +19,7 @@ class DifficultyLevel(str, enum.Enum):
 class KnowledgeSegment(Base):
     __tablename__ = "knowledge_segments"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
     document_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("documents.id"), nullable=False

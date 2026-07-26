@@ -30,7 +30,7 @@ class BlockType(str, enum.Enum):
 class Document(Base):
     __tablename__ = "documents"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
     filename: Mapped[str] = mapped_column(String(500), nullable=False)
     file_path: Mapped[str] = mapped_column(String(1000), nullable=False)
@@ -61,7 +61,7 @@ class Document(Base):
 class ContentBlock(Base):
     __tablename__ = "content_blocks"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     document_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("documents.id"), nullable=False, index=True
     )

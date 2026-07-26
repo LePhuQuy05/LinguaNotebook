@@ -14,6 +14,17 @@ from src.core.logging import setup_logging
 async def lifespan(app: FastAPI):
     """Startup/shutdown lifecycle."""
     setup_logging()
+    # Auto-create tables on startup (dev only — use Alembic for production)
+    from src.core.database import Base
+    from src.models.user import User  # noqa: F401
+    from src.models.document import Document, ContentBlock  # noqa: F401
+    from src.models.knowledge_segment import KnowledgeSegment  # noqa: F401
+    from src.models.schedule import Schedule  # noqa: F401
+    from src.models.learning import Lesson, LessonItem  # noqa: F401
+    from src.models.srs import SRSCard  # noqa: F401
+    from src.models.sync import Device, SyncLog, ProgressSnapshot  # noqa: F401
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
     yield
     await engine.dispose()
 
@@ -32,6 +43,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Register API routers
+from src.api import auth, documents, learning, rag, tts, sync, progress, donations
+
+app.include_router(auth.router)
+app.include_router(documents.router)
+app.include_router(learning.router)
+app.include_router(rag.router)
+app.include_router(tts.router)
+app.include_router(sync.router)
+app.include_router(progress.router)
+app.include_router(donations.router)
 
 
 @app.get("/api/v1/health")

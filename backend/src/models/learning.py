@@ -26,7 +26,7 @@ class ItemType(str, enum.Enum):
 class Lesson(Base):
     __tablename__ = "lessons"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
     schedule_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("schedules.id"), nullable=True
@@ -50,7 +50,7 @@ class Lesson(Base):
 class LessonItem(Base):
     __tablename__ = "lesson_items"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     lesson_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("lessons.id"), nullable=False, index=True
     )

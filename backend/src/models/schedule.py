@@ -20,7 +20,7 @@ class ContentType(str, enum.Enum):
 class Schedule(Base):
     __tablename__ = "schedules"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     days_of_week: Mapped[list] = mapped_column(JSON, nullable=False)

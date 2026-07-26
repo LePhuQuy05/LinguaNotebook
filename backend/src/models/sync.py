@@ -25,7 +25,7 @@ class SyncAction(str, enum.Enum):
 class Device(Base):
     __tablename__ = "devices"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
     platform: Mapped[Platform] = mapped_column(Enum(Platform), nullable=False)
     device_name: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -39,7 +39,7 @@ class Device(Base):
 class SyncLog(Base):
     __tablename__ = "sync_logs"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
     device_id: Mapped[str] = mapped_column(String(36), ForeignKey("devices.id"), nullable=False)
     entity_type: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -56,7 +56,7 @@ class SyncLog(Base):
 class ProgressSnapshot(Base):
     __tablename__ = "progress_snapshots"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
     date: Mapped[date] = mapped_column(Date, nullable=False)
     words_learned: Mapped[int] = mapped_column(Integer, default=0)
