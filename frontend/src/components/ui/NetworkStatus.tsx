@@ -1,6 +1,6 @@
 "use client";
 
-import { useOffline } from "@/hooks/useOffline";
+import { useOffline } from "../../hooks/useOffline";
 import { Wifi, WifiOff } from "lucide-react";
 
 export function NetworkStatus() {

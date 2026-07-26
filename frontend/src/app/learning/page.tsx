@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Flashcard } from "@/components/learning/Flashcard";
-import { ReadingPassage } from "@/components/learning/ReadingPassage";
-import { GrammarExercise } from "@/components/learning/GrammarExercise";
-import { ListeningExercise } from "@/components/learning/ListeningExercise";
+import { Flashcard } from "../../components/learning/Flashcard";
+import { ReadingPassage } from "../../components/learning/ReadingPassage";
+import { GrammarExercise } from "../../components/learning/GrammarExercise";
+import { ListeningExercise } from "../../components/learning/ListeningExercise";
 
 interface LessonItem {
   id: string;

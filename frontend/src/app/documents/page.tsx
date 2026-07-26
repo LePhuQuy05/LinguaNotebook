@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FileText, Plus } from "lucide-react";
-import { DocumentUploader } from "@/components/document/DocumentUploader";
-import { ParseProgress } from "@/components/document/ParseProgress";
+import { DocumentUploader } from "../../components/document/DocumentUploader";
+import { ParseProgress } from "../../components/document/ParseProgress";
 
 interface DocumentSummary {
   id: string;

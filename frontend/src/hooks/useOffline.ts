@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { getPendingChanges, markSynced, queueChange } from "@/lib/offline-db";
+import { getPendingChanges, markSynced, queueChange } from "../lib/offline-db";
 
 export function useOffline() {
   const [isOnline, setIsOnline] = useState(
