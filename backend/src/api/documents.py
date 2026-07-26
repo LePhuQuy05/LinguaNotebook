@@ -184,3 +184,25 @@ async def parse_progress(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@router.get("/{document_id}/parse/progress/poll")
+async def parse_progress_poll(
+    document_id: str,
+    token: str | None = Query(None),
+):
+    """Polling endpoint — returns progress as JSON (works through proxies)."""
+    # Auth via token query param
+    if token:
+        try:
+            payload = decode_token(token)
+            if payload.get("type") != "access":
+                token = None
+        except Exception:
+            token = None
+
+    progress = await svc.get_parse_progress(document_id)
+    if not progress or not progress.get("status"):
+        return {"status": "waiting", "current_page": 0, "total_pages": 0}
+
+    return progress

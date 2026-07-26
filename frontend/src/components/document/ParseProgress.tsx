@@ -21,31 +21,32 @@ export function ParseProgress({ documentId, onComplete }: ParseProgressProps) {
   const [progress, setProgress] = useState<ProgressData | null>(null);
 
   useEffect(() => {
-    const url = `/api/v1/documents/${documentId}/parse/progress`;
     const token = localStorage.getItem("token");
+    let active = true;
 
-    const eventSource = new EventSource(
-      `${url}?token=${encodeURIComponent(token || "")}`
-    );
+    const poll = async () => {
+      try {
+        const res = await fetch(
+          `/api/v1/documents/${documentId}/parse/progress/poll?token=${encodeURIComponent(token || "")}`,
+        );
+        if (!res.ok || !active) return;
+        const data: ProgressData = await res.json();
+        setProgress(data);
 
-    eventSource.onmessage = (event) => {
-      const data: ProgressData = JSON.parse(event.data);
-      setProgress(data);
-
-      if (data.status === "completed" || data.status === "completed_with_errors") {
-        eventSource.close();
-        onComplete?.();
+        if (data.status === "completed" || data.status === "completed_with_errors") {
+          onComplete?.();
+          return;
+        }
+        if (data.status === "failed") return;
+      } catch {
+        // Retry on next poll
       }
-      if (data.status === "failed") {
-        eventSource.close();
-      }
+
+      if (active) setTimeout(poll, 1000);
     };
 
-    eventSource.onerror = () => {
-      eventSource.close();
-    };
-
-    return () => eventSource.close();
+    poll();
+    return () => { active = false; };
   }, [documentId, onComplete]);
 
   if (!progress) {
