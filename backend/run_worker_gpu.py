@@ -1,15 +1,11 @@
 #!/usr/bin/env python3
 """
-GPU Celery Worker — Run on HOST (not Docker) for Intel Arc GPU access.
+GPU Celery Worker - Run on HOST (not Docker) for Intel Arc GPU access.
 
 Usage:
-    C:\Users\ASUS\AppData\Local\Programs\Python\Python312\python.exe run_worker_gpu.py
+    python run_worker_gpu.py
 
-Requirements (install once):
-    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
-    pip install "transformers>=4.46,<5" accelerate einops timm sentencepiece safetensors
-    pip install celery redis sqlalchemy pydantic pydantic-settings pymupdf pillow
-    pip install python-jose passlib bcrypt==4.0.1 structlog boto3 httpx
+Requirements (install once via setup_gpu.bat)
 
 Per HPD-PARSING-GUIDE.md Section 2.2 Path B (Intel Arc XPU)
 """
