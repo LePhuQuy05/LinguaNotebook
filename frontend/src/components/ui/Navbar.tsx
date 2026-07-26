@@ -29,14 +29,13 @@ export function Navbar() {
             className="flex items-center gap-1.5 text-sm font-medium text-foreground-muted transition-colors hover:text-foreground"
           >
             <Calendar className="h-4 w-4" />
-            Today's Lesson
+            Study
           </Link>
           <Link
-            href="/progress"
-            className="flex items-center gap-1.5 text-sm font-medium text-foreground-muted transition-colors hover:text-foreground"
+            href="/login"
+            className="rounded-lg border border-primary-300 px-3 py-1 text-sm font-medium text-primary-600 transition-colors hover:bg-primary-50"
           >
-            <BarChart3 className="h-4 w-4" />
-            Progress
+            Sign in
           </Link>
         </div>
       </div>
