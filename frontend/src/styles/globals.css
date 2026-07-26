@@ -5,10 +5,14 @@
 
 @layer base {
   * {
-    border-color: var(--color-border);
+    border-color: #E2E8F0;
   }
   body {
-    background-color: var(--color-background);
-    color: var(--color-foreground);
+    background-color: #FFFBEB;
+    color: #1E293B;
+    font-family: var(--font-body);
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
   }
 }
