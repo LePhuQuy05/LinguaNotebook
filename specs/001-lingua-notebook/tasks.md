@@ -16,16 +16,16 @@
 
 **Purpose**: Project initialization, monorepo scaffolding, Docker, CI/CD
 
-- [ ] T001 Create monorepo root with pnpm workspace config: `pnpm-workspace.yaml`, `turbo.json`, `.env.example`, `Makefile`
-- [ ] T002 [P] Initialize backend Python project: `backend/pyproject.toml`, `backend/requirements.txt`, `backend/src/__init__.py`
-- [ ] T003 [P] Initialize frontend Next.js project with TypeScript, Tailwind, shadcn/ui: `frontend/package.json`, `frontend/tsconfig.json`, `frontend/tailwind.config.ts`, `frontend/next.config.js`
-- [ ] T004 [P] Initialize mobile React Native + Expo project: `mobile/package.json`, `mobile/app.json`, `mobile/tsconfig.json`
-- [ ] T005 [P] Initialize shared TypeScript package: `shared/package.json`, `shared/tsconfig.json`, `shared/src/types/`, `shared/src/constants/`
-- [ ] T006 [P] Create Docker Compose dev stack with postgres, qdrant, redis, minio: `docker/docker-compose.yml`
-- [ ] T007 [P] Configure GitHub Actions CI pipeline: `.github/workflows/ci.yml` (lint, type-check, test, build)
-- [ ] T008 [P] Create README.md with project description, quickstart, badges; LICENSE (MIT); CONTRIBUTING.md; CODE_OF_CONDUCT.md
-- [ ] T009 Install ui-ux-pro-max design tokens into frontend: copy `design-system/linguanotebook/tokens.css` → `frontend/src/styles/tokens.css`; configure `tailwind.config.ts` from `design-system/linguanotebook/tailwind.config.ts`
-- [ ] T010 Run `git init`, create `.gitignore` for Python, Node, Docker artifacts. Initial commit.
+- [x] T001 Create monorepo root with pnpm workspace config: `pnpm-workspace.yaml`, `turbo.json`, `.env.example`, `Makefile`
+- [x] T002 [P] Initialize backend Python project: `backend/pyproject.toml`, `backend/requirements.txt`, `backend/src/__init__.py`
+- [x] T003 [P] Initialize frontend Next.js project with TypeScript, Tailwind, shadcn/ui: `frontend/package.json`, `frontend/tsconfig.json`, `frontend/tailwind.config.ts`, `frontend/next.config.js`
+- [x] T004 [P] Initialize mobile React Native + Expo project: `mobile/package.json`, `mobile/app.json`, `mobile/tsconfig.json`
+- [x] T005 [P] Initialize shared TypeScript package: `shared/package.json`, `shared/tsconfig.json`, `shared/src/types/`, `shared/src/constants/`
+- [x] T006 [P] Create Docker Compose dev stack with postgres, qdrant, redis, minio: `docker/docker-compose.yml`
+- [x] T007 [P] Configure GitHub Actions CI pipeline: `.github/workflows/ci.yml` (lint, type-check, test, build)
+- [x] T008 [P] Create README.md with project description, quickstart, badges; LICENSE (MIT); CONTRIBUTING.md; CODE_OF_CONDUCT.md
+- [x] T009 Install ui-ux-pro-max design tokens into frontend: copy `design-system/linguanotebook/tokens.css` → `frontend/src/styles/tokens.css`; configure `tailwind.config.ts` from `design-system/linguanotebook/tailwind.config.ts`
+- [x] T010 Run `git init`, create `.gitignore` for Python, Node, Docker artifacts. Initial commit.
 
 ---
 
@@ -37,26 +37,26 @@
 
 ### Backend Foundation
 
-- [ ] T011 Setup FastAPI application with CORS, error handlers, health endpoints: `backend/src/main.py`, `backend/src/core/config.py`, `backend/src/core/dependencies.py`
-- [ ] T012 [P] Configure async SQLAlchemy engine, session factory, base model: `backend/src/core/database.py`, `backend/src/models/base.py`
-- [ ] T013 [P] Configure Redis client and Celery app with task routing: `backend/src/workers/celery_app.py`, `backend/src/core/redis.py`
-- [ ] T014 [P] Configure Qdrant client with collection management utilities: `backend/src/core/qdrant.py`
-- [ ] T015 [P] Configure S3/MinIO storage abstraction: `backend/src/core/storage.py`
-- [ ] T016 Create initial Alembic migration with all 13 entities from data-model.md: `backend/alembic/env.py`, `backend/alembic/versions/001_initial.py`
-- [ ] T017 [P] Implement JWT token creation/validation and OAuth2 flows (Google, GitHub): `backend/src/core/security.py`
-- [ ] T018 [P] Setup structured logging with request ID propagation: `backend/src/core/logging.py`
+- [x] T011 Setup FastAPI application with CORS, error handlers, health endpoints: `backend/src/main.py`, `backend/src/core/config.py`, `backend/src/core/dependencies.py`
+- [x] T012 [P] Configure async SQLAlchemy engine, session factory, base model: `backend/src/core/database.py`, `backend/src/models/base.py`
+- [x] T013 [P] Configure Redis client and Celery app with task routing: `backend/src/workers/celery_app.py`, `backend/src/core/redis.py`
+- [x] T014 [P] Configure Qdrant client with collection management utilities: `backend/src/core/qdrant.py`
+- [x] T015 [P] Configure S3/MinIO storage abstraction: `backend/src/core/storage.py`
+- [x] T016 Create initial Alembic migration with all 13 entities from data-model.md: `backend/alembic/env.py`, `backend/alembic/versions/001_initial.py`
+- [x] T017 [P] Implement JWT token creation/validation and OAuth2 flows (Google, GitHub): `backend/src/core/security.py`
+- [x] T018 [P] Setup structured logging with request ID propagation: `backend/src/core/logging.py`
 
 ### Frontend Foundation
 
-- [ ] T019 Setup Next.js App Router with root layout, providers (theme, auth, query), font loading: `frontend/src/app/layout.tsx`, `frontend/src/app/providers.tsx`
-- [ ] T020 [P] Create API client with auth interceptor, error handling, SWR configuration: `frontend/src/lib/api.ts`
-- [ ] T021 [P] Create shared UI primitives from shadcn/ui: button, input, card, dialog, dropdown, tabs, skeleton, toast: `frontend/src/components/ui/`
-- [ ] T022 [P] Implement dark/light theme toggle with system preference detection and persistence: `frontend/src/lib/theme.ts`
+- [x] T019 Setup Next.js App Router with root layout, providers (theme, auth, query), font loading: `frontend/src/app/layout.tsx`, `frontend/src/app/providers.tsx`
+- [x] T020 [P] Create API client with auth interceptor, error handling, SWR configuration: `frontend/src/lib/api.ts`
+- [x] T021 [P] Create shared UI primitives from shadcn/ui: button, input, card, dialog, dropdown, tabs, skeleton, toast: `frontend/src/components/ui/`
+- [x] T022 [P] Implement dark/light theme toggle with system preference detection and persistence: `frontend/src/lib/theme.ts`
 
 ### Shared Package
 
-- [ ] T023 Generate TypeScript types from OpenAPI spec (contracts/api.yaml): `shared/src/types/api.ts`
-- [ ] T024 [P] Define shared constants: languages list, tier-free feature flags, SM-2 defaults, chunk size defaults: `shared/src/constants/index.ts`
+- [x] T023 Generate TypeScript types from OpenAPI spec (contracts/api.yaml): `shared/src/types/api.ts`
+- [x] T024 [P] Define shared constants: languages list, tier-free feature flags, SM-2 defaults, chunk size defaults: `shared/src/constants/index.ts`
 
 **Checkpoint**: Foundation ready — all user stories can now be implemented in parallel
 
@@ -147,35 +147,35 @@
 
 ### Tests for User Story 3
 
-- [ ] T052 [P] [US3] Contract test for schedules and lessons endpoints in `backend/tests/contract/test_learning_api.py`
-- [ ] T053 [P] [US3] Integration test for schedule → lesson generation → item completion workflow in `backend/tests/integration/test_lesson_generation.py`
+- [x] T052 [P] [US3] Contract test for schedules and lessons endpoints in `backend/tests/contract/test_learning_api.py`
+- [x] T053 [P] [US3] Integration test for schedule → lesson generation → item completion workflow in `backend/tests/integration/test_lesson_generation.py`
 
 ### Models for User Story 3
 
-- [ ] T054 [US3] Create Schedule and Lesson/LessonItem SQLAlchemy models in `backend/src/models/schedule.py`, `backend/src/models/learning.py`
-- [ ] T055 [US3] Create Alembic migration for schedules, lessons, lesson_items tables: `backend/alembic/versions/003_learning.py`
+- [x] T054 [US3] Create Schedule and Lesson/LessonItem SQLAlchemy models in `backend/src/models/schedule.py`, `backend/src/models/learning.py`
+- [x] T055 [US3] Create Alembic migration for schedules, lessons, lesson_items tables: `backend/alembic/versions/003_learning.py`
 
 ### Services for User Story 3
 
-- [ ] T056 [P] [US3] Implement schedule service: CRUD operations, validation (days 1-7, time, duration 5-120min, content_types subset, daily_item_count 5-50) in `backend/src/services/schedule_service.py`
-- [ ] T057 [US3] Implement LLM-powered content generation service: load Qwen3-0.6B (or similar lightweight model), extract flashcards (10-20/chapter), generate MCQs (3-5/passage: main idea, detail, inference, vocabulary), detect grammar patterns + generate fill-in-the-blank with distractors in `backend/src/services/generation_service.py`
-- [ ] T058 [US3] Implement lesson service: generate daily lesson from schedule + RAG content, interleave content types (40% vocab, 25% reading, 20% grammar, 15% listening), mix new + SRS review items, handle insufficient content edge case in `backend/src/services/lesson_service.py`
-- [ ] T059 [US3] Implement Celery lesson worker: nightly batch generation of tomorrow's lessons for all active schedules in `backend/src/workers/lesson_worker.py`
+- [x] T056 [P] [US3] Implement schedule service: CRUD operations, validation (days 1-7, time, duration 5-120min, content_types subset, daily_item_count 5-50) in `backend/src/services/schedule_service.py`
+- [x] T057 [US3] Implement LLM-powered content generation service: load Qwen3-0.6B (or similar lightweight model), extract flashcards (10-20/chapter), generate MCQs (3-5/passage: main idea, detail, inference, vocabulary), detect grammar patterns + generate fill-in-the-blank with distractors in `backend/src/services/generation_service.py`
+- [x] T058 [US3] Implement lesson service: generate daily lesson from schedule + RAG content, interleave content types (40% vocab, 25% reading, 20% grammar, 15% listening), mix new + SRS review items, handle insufficient content edge case in `backend/src/services/lesson_service.py`
+- [x] T059 [US3] Implement Celery lesson worker: nightly batch generation of tomorrow's lessons for all active schedules in `backend/src/workers/lesson_worker.py`
 
 ### API for User Story 3
 
-- [ ] T060 [US3] Implement POST/GET /schedules, PATCH/DELETE /schedules/{id} in `backend/src/api/learning.py`
-- [ ] T061 [US3] Implement GET /lessons/daily (auto-generate if not exists), POST /lessons/{id}/items/{item_id}/answer (evaluate response: case-insensitive, whitespace-normalized, fuzzy diacritics), POST /lessons/{id}/complete in `backend/src/api/learning.py`
-- [ ] T062 [US3] Implement GET /lessons/history (paginated, date range filter) in `backend/src/api/learning.py`
+- [x] T060 [US3] Implement POST/GET /schedules, PATCH/DELETE /schedules/{id} in `backend/src/api/learning.py`
+- [x] T061 [US3] Implement GET /lessons/daily (auto-generate if not exists), POST /lessons/{id}/items/{item_id}/answer (evaluate response: case-insensitive, whitespace-normalized, fuzzy diacritics), POST /lessons/{id}/complete in `backend/src/api/learning.py`
+- [x] T062 [US3] Implement GET /lessons/history (paginated, date range filter) in `backend/src/api/learning.py`
 
 ### Frontend for User Story 3
 
-- [ ] T063 [P] [US3] Create ScheduleBuilder component: day picker, time input, duration slider, content type checkboxes in `frontend/src/components/schedule/ScheduleBuilder.tsx`
-- [ ] T064 [P] [US3] Create Flashcard component: flip animation, term → definition + example, self-rate buttons (1-5), TTS play button in `frontend/src/components/learning/Flashcard.tsx`
-- [ ] T065 [P] [US3] Create ReadingPassage component: text display, MCQ questions with radio buttons, submit + feedback in `frontend/src/components/learning/ReadingPassage.tsx`
-- [ ] T066 [P] [US3] Create GrammarExercise component: fill-in-the-blank input, distractors shown as hint, submit + correct answer display in `frontend/src/components/learning/GrammarExercise.tsx`
-- [ ] T067 [US3] Create daily lesson page: fetch today's lesson, render items in interleaved order, track progress per item, submit all answers in `frontend/src/app/learning/page.tsx`
-- [ ] T067a [P] [US3] Create ListeningExercise component: TTS plays passage → user answers comprehension questions → auto-evaluate by keyword presence in `frontend/src/components/learning/ListeningExercise.tsx`
+- [x] T063 [P] [US3] Create ScheduleBuilder component: day picker, time input, duration slider, content type checkboxes in `frontend/src/components/schedule/ScheduleBuilder.tsx`
+- [x] T064 [P] [US3] Create Flashcard component: flip animation, term → definition + example, self-rate buttons (1-5), TTS play button in `frontend/src/components/learning/Flashcard.tsx`
+- [x] T065 [P] [US3] Create ReadingPassage component: text display, MCQ questions with radio buttons, submit + feedback in `frontend/src/components/learning/ReadingPassage.tsx`
+- [x] T066 [P] [US3] Create GrammarExercise component: fill-in-the-blank input, distractors shown as hint, submit + correct answer display in `frontend/src/components/learning/GrammarExercise.tsx`
+- [x] T067 [US3] Create daily lesson page: fetch today's lesson, render items in interleaved order, track progress per item, submit all answers in `frontend/src/app/learning/page.tsx`
+- [x] T067a [P] [US3] Create ListeningExercise component: TTS plays passage → user answers comprehension questions → auto-evaluate by keyword presence in `frontend/src/components/learning/ListeningExercise.tsx`
 
 **Checkpoint**: Complete core learning loop — schedule → auto-generated lesson → study → score. This (US1+US2+US3) is the deployable MVP.
 
@@ -189,21 +189,21 @@
 
 ### Models for User Story 7
 
-- [ ] T068 [P] [US7] Create Device, SyncLog, and ProgressSnapshot SQLAlchemy models in `backend/src/models/device.py`, `backend/src/models/sync.py`, `backend/src/models/progress.py`
-- [ ] T069 [US7] Create Alembic migration for devices, sync_logs, progress_snapshots tables: `backend/alembic/versions/004_offline_sync.py`
+- [x] T068 [P] [US7] Create Device, SyncLog, and ProgressSnapshot SQLAlchemy models in `backend/src/models/device.py`, `backend/src/models/sync.py`, `backend/src/models/progress.py`
+- [x] T069 [US7] Create Alembic migration for devices, sync_logs, progress_snapshots tables: `backend/alembic/versions/004_offline_sync.py`
 
 ### Backend for User Story 7
 
-- [ ] T070 [US7] Implement sync service: push (validate + merge LWW at item granularity, detect conflicts, return resolution), pull (query changes since timestamp) in `backend/src/services/sync_service.py`
-- [ ] T071 [US7] Implement POST /sync/push and GET /sync/pull endpoints in `backend/src/api/sync.py`
-- [ ] T072 [US7] Implement ProgressSnapshot daily aggregation (streak calculation, accuracy by type, study minutes) in `backend/src/services/progress_service.py`
+- [x] T070 [US7] Implement sync service: push (validate + merge LWW at item granularity, detect conflicts, return resolution), pull (query changes since timestamp) in `backend/src/services/sync_service.py`
+- [x] T071 [US7] Implement POST /sync/push and GET /sync/pull endpoints in `backend/src/api/sync.py`
+- [x] T072 [US7] Implement ProgressSnapshot daily aggregation (streak calculation, accuracy by type, study minutes) in `backend/src/services/progress_service.py`
 
 ### Frontend for User Story 7
 
-- [ ] T073 [P] [US7] Implement offline storage layer with IndexedDB (Dexie.js): cache documents, lessons, SRS cards, audio URLs in `frontend/src/lib/offline-db.ts`
-- [ ] T074 [US7] Implement offline sync hook: detect online/offline, queue changes when offline, execute push/pull on reconnect with exponential backoff retry in `frontend/src/hooks/useOffline.ts`
-- [ ] T075 [US7] Configure PWA: service worker with Workbox, offline fallback page, install prompt, app manifest in `frontend/src/app/manifest.ts`, `frontend/next.config.js`
-- [ ] T076 [US7] Add network status indicator and offline/online feature availability badges to UI in `frontend/src/components/ui/NetworkStatus.tsx`
+- [x] T073 [P] [US7] Implement offline storage layer with IndexedDB (Dexie.js): cache documents, lessons, SRS cards, audio URLs in `frontend/src/lib/offline-db.ts`
+- [x] T074 [US7] Implement offline sync hook: detect online/offline, queue changes when offline, execute push/pull on reconnect with exponential backoff retry in `frontend/src/hooks/useOffline.ts`
+- [x] T075 [US7] Configure PWA: service worker with Workbox, offline fallback page, install prompt, app manifest in `frontend/src/app/manifest.ts`, `frontend/next.config.js`
+- [x] T076 [US7] Add network status indicator and offline/online feature availability badges to UI in `frontend/src/components/ui/NetworkStatus.tsx`
 
 **Checkpoint**: Full offline learning with automatic sync. Combined with US1–US3 = complete MVP.
 
@@ -217,25 +217,25 @@
 
 ### Tests for User Story 4
 
-- [ ] T077 [P] [US4] Contract test for TTS endpoints in `backend/tests/contract/test_tts_api.py`
-- [ ] T078 [P] [US4] Integration test for TTS pipeline (text → synthesize → cache → playback) in `backend/tests/integration/test_tts_pipeline.py`
+- [x] T077 [P] [US4] Contract test for TTS endpoints in `backend/tests/contract/test_tts_api.py`
+- [x] T078 [P] [US4] Integration test for TTS pipeline (text → synthesize → cache → playback) in `backend/tests/integration/test_tts_pipeline.py`
 
 ### Services for User Story 4
 
-- [ ] T079 [P] [US4] Implement TTS service: Edge TTS primary, Piper TTS fallback, SHA-256 content hash for cache key, Redis audio cache with 30-day TTL + LRU eviction at 5GB/user, MP3 128kbps mono output in `backend/src/services/tts_service.py`
-- [ ] T080 [P] [US4] Implement audio cache utility: hash-based key generation, cache warming scheduler in `backend/src/utils/audio_cache.py`
-- [ ] T081 [US4] Implement Celery beat task for nightly TTS cache warming (next 2 days of lessons, 3am user-local time) in `backend/src/workers/lesson_worker.py`
+- [x] T079 [P] [US4] Implement TTS service: Edge TTS primary, Piper TTS fallback, SHA-256 content hash for cache key, Redis audio cache with 30-day TTL + LRU eviction at 5GB/user, MP3 128kbps mono output in `backend/src/services/tts_service.py`
+- [x] T080 [P] [US4] Implement audio cache utility: hash-based key generation, cache warming scheduler in `backend/src/utils/audio_cache.py`
+- [x] T081 [US4] Implement Celery beat task for nightly TTS cache warming (next 2 days of lessons, 3am user-local time) in `backend/src/workers/lesson_worker.py`
 
 ### API for User Story 4
 
-- [ ] T082 [US4] Implement POST /tts/synthesize (text, language, voice, speed) and GET /tts/voices in `backend/src/api/tts.py`
-- [ ] T083 [US4] Implement GET /tts/audio/{hash} (stream cached audio file) in `backend/src/api/tts.py`
+- [x] T082 [US4] Implement POST /tts/synthesize (text, language, voice, speed) and GET /tts/voices in `backend/src/api/tts.py`
+- [x] T083 [US4] Implement GET /tts/audio/{hash} (stream cached audio file) in `backend/src/api/tts.py`
 
 ### Frontend for User Story 4
 
-- [ ] T084 [P] [US4] Create AudioPlayer component: play/pause, speed control (0.5x-2x), voice selector, download button in `frontend/src/components/tts/AudioPlayer.tsx`
-- [ ] T085 [P] [US4] Create Waveform visualization component using wavesurfer.js with `prefers-reduced-motion` fallback in `frontend/src/components/tts/Waveform.tsx`
-- [ ] T086 [US4] Integrate AudioPlayer into Flashcard, ReadingPassage, GrammarExercise, ListeningExercise components: add play button to every text content item
+- [x] T084 [P] [US4] Create AudioPlayer component: play/pause, speed control (0.5x-2x), voice selector, download button in `frontend/src/components/tts/AudioPlayer.tsx`
+- [x] T085 [P] [US4] Create Waveform visualization component using wavesurfer.js with `prefers-reduced-motion` fallback in `frontend/src/components/tts/Waveform.tsx`
+- [x] T086 [US4] Integrate AudioPlayer into Flashcard, ReadingPassage, GrammarExercise, ListeningExercise components: add play button to every text content item
 
 **Checkpoint**: All learning content is listenable with natural TTS in 8+ languages
 
@@ -249,18 +249,18 @@
 
 ### Tests for User Story 5
 
-- [ ] T087 [P] [US5] Integration test for SRS workflow (lesson completion → card creation → review scheduling → interval progression) in `backend/tests/integration/test_srs_workflow.py`
-- [ ] T088 [P] [US5] Unit test for SM-2 algorithm correctness (all rating scenarios, EF bounds, leech detection, graduation) in `backend/tests/unit/test_srs_algorithm.py`
+- [x] T087 [P] [US5] Integration test for SRS workflow (lesson completion → card creation → review scheduling → interval progression) in `backend/tests/integration/test_srs_workflow.py`
+- [x] T088 [P] [US5] Unit test for SM-2 algorithm correctness (all rating scenarios, EF bounds, leech detection, graduation) in `backend/tests/unit/test_srs_algorithm.py`
 
 ### Models & Services for User Story 5
 
-- [ ] T089 [US5] Create SRSCard SQLAlchemy model with SM-2 fields in `backend/src/models/srs.py`; Alembic migration: `backend/alembic/versions/005_srs.py`
-- [ ] T090 [US5] Implement SRS service: SM-2 algorithm (EF adjustments per rating, interval progression, leech detection at 5 consecutive 1s, graduation at first ≥3, minimum EF 1.3), due card query for lesson generation, card creation on flashcard completion in `backend/src/services/srs_service.py`
+- [x] T089 [US5] Create SRSCard SQLAlchemy model with SM-2 fields in `backend/src/models/srs.py`; Alembic migration: `backend/alembic/versions/005_srs.py`
+- [x] T090 [US5] Implement SRS service: SM-2 algorithm (EF adjustments per rating, interval progression, leech detection at 5 consecutive 1s, graduation at first ≥3, minimum EF 1.3), due card query for lesson generation, card creation on flashcard completion in `backend/src/services/srs_service.py`
 
 ### Integration for User Story 5
 
-- [ ] T091 [US5] Integrate SRS card creation into POST /lessons/{id}/complete: create/update cards from completed flashcard items in `backend/src/api/learning.py`
-- [ ] T092 [US5] Integrate due review cards into GET /lessons/daily: query cards due today, interleave with new content in lesson generation in `backend/src/services/lesson_service.py`
+- [x] T091 [US5] Integrate SRS card creation into POST /lessons/{id}/complete: create/update cards from completed flashcard items in `backend/src/api/learning.py`
+- [x] T092 [US5] Integrate due review cards into GET /lessons/daily: query cards due today, interleave with new content in lesson generation in `backend/src/services/lesson_service.py`
 
 **Checkpoint**: Vocabulary retention optimized through evidence-based spaced repetition
 
@@ -274,18 +274,18 @@
 
 ### Tests for User Story 6
 
-- [ ] T093 [P] [US6] Contract test for progress endpoints in `backend/tests/contract/test_progress_api.py`
+- [x] T093 [P] [US6] Contract test for progress endpoints in `backend/tests/contract/test_progress_api.py`
 
 ### API for User Story 6
 
-- [ ] T094 [US6] Implement GET /progress/dashboard (current streak, total words, study minutes, daily snapshots for date range, accuracy by content type) in `backend/src/api/progress.py`
-- [ ] T095 [US6] Implement POST /progress/export-report (generate PDF report with all dashboard metrics) in `backend/src/api/progress.py`
+- [x] T094 [US6] Implement GET /progress/dashboard (current streak, total words, study minutes, daily snapshots for date range, accuracy by content type) in `backend/src/api/progress.py`
+- [x] T095 [US6] Implement POST /progress/export-report (generate PDF report with all dashboard metrics) in `backend/src/api/progress.py`
 
 ### Frontend for User Story 6
 
-- [ ] T096 [P] [US6] Create StreakWidget with animated streak counter and calendar heatmap in `frontend/src/components/dashboard/StreakWidget.tsx`
-- [ ] T097 [P] [US6] Create VocabChart (line chart: words learned over time), StudyTimeChart (bar chart: minutes per day), AccuracyChart (radar/bar: accuracy by content type) in `frontend/src/components/dashboard/`
-- [ ] T098 [US6] Create progress dashboard page with all widgets, date range picker, export report button in `frontend/src/app/progress/page.tsx`
+- [x] T096 [P] [US6] Create StreakWidget with animated streak counter and calendar heatmap in `frontend/src/components/dashboard/StreakWidget.tsx`
+- [x] T097 [P] [US6] Create VocabChart (line chart: words learned over time), StudyTimeChart (bar chart: minutes per day), AccuracyChart (radar/bar: accuracy by content type) in `frontend/src/components/dashboard/`
+- [x] T098 [US6] Create progress dashboard page with all widgets, date range picker, export report button in `frontend/src/app/progress/page.tsx`
 
 **Checkpoint**: Users can see their learning progress and stay motivated
 
@@ -299,11 +299,11 @@
 
 ### Mobile App
 
-- [ ] T099 [P] [US8] Setup React Native navigation (stack + tabs), theme provider, API client with shared types in `mobile/src/navigation/`, `mobile/src/lib/`
-- [ ] T100 [P] [US8] Create mobile screens: Documents, Learning Session, Schedule, Dashboard, Settings — reusing shared types/constants, platform-adapted UI in `mobile/src/screens/`
-- [ ] T101 [US8] Implement mobile offline storage with WatermelonDB (SQLite): cache documents, lessons, SRS cards, audio in `mobile/src/lib/offline-db.ts`
-- [ ] T102 [US8] Configure Expo EAS Build for iOS and Android submission; configure push notifications (Expo Notifications) in `mobile/app.json`, `mobile/eas.json`
-- [ ] T103 [US8] Implement push notification handling: daily lesson reminder, sync completion in `mobile/src/lib/notifications.ts`
+- [x] T099 [P] [US8] Setup React Native navigation (stack + tabs), theme provider, API client with shared types in `mobile/src/navigation/`, `mobile/src/lib/`
+- [x] T100 [P] [US8] Create mobile screens: Documents, Learning Session, Schedule, Dashboard, Settings — reusing shared types/constants, platform-adapted UI in `mobile/src/screens/`
+- [x] T101 [US8] Implement mobile offline storage with WatermelonDB (SQLite): cache documents, lessons, SRS cards, audio in `mobile/src/lib/offline-db.ts`
+- [x] T102 [US8] Configure Expo EAS Build for iOS and Android submission; configure push notifications (Expo Notifications) in `mobile/app.json`, `mobile/eas.json`
+- [x] T103 [US8] Implement push notification handling: daily lesson reminder, sync completion in `mobile/src/lib/notifications.ts`
 
 **Checkpoint**: Users can install native apps from app stores with full feature parity
 
@@ -315,11 +315,11 @@
 
 ### Documentation & Repository
 
-- [ ] T104 [P] [US9] Create documentation site with VitePress: user guide, self-hosting guide, API reference, contributing guide in `docs/`
-- [ ] T105 [P] [US9] Create self-hosting deployment guide: Docker Compose production config, environment variables reference, hardware requirements (CPU minimum + GPU recommended), upgrade/migration guide in `docs/self-hosting/`
-- [ ] T106 [P] [US9] Create GitHub community files: ISSUE_TEMPLATE (bug, feature, question), PULL_REQUEST_TEMPLATE (constitution compliance checklist), SECURITY.md (vulnerability disclosure) in `.github/`
-- [ ] T107 [P] [US9] Create ROADMAP.md with public milestones: MVP, v1.0, community goals in `ROADMAP.md`
-- [ ] T108 [US9] Configure GitHub branch protection rules, CODEOWNERS file, and GitHub Discussions enabled in `.github/CODEOWNERS`
+- [x] T104 [P] [US9] Create documentation site with VitePress: user guide, self-hosting guide, API reference, contributing guide in `docs/`
+- [x] T105 [P] [US9] Create self-hosting deployment guide: Docker Compose production config, environment variables reference, hardware requirements (CPU minimum + GPU recommended), upgrade/migration guide in `docs/self-hosting/`
+- [x] T106 [P] [US9] Create GitHub community files: ISSUE_TEMPLATE (bug, feature, question), PULL_REQUEST_TEMPLATE (constitution compliance checklist), SECURITY.md (vulnerability disclosure) in `.github/`
+- [x] T107 [P] [US9] Create ROADMAP.md with public milestones: MVP, v1.0, community goals in `ROADMAP.md`
+- [x] T108 [US9] Configure GitHub branch protection rules, CODEOWNERS file, and GitHub Discussions enabled in `.github/CODEOWNERS`
 
 **Checkpoint**: Repository is public-ready — anyone can clone, self-host, and contribute
 
@@ -333,18 +333,18 @@
 
 ### Tests for User Story 10
 
-- [ ] T109 [P] [US10] Contract test for auth endpoints in `backend/tests/contract/test_auth_api.py`
+- [x] T109 [P] [US10] Contract test for auth endpoints in `backend/tests/contract/test_auth_api.py`
 
 ### Backend for User Story 10
 
-- [ ] T110 [US10] Build on T017: Implement POST /auth/register (email + password validation, verification email), POST /auth/login (JWT pair response), POST /auth/refresh, POST /auth/logout in `backend/src/api/auth.py`
-- [ ] T111 [US10] Implement POST /auth/oauth/{provider} (Google, GitHub callback), GET /auth/me, DELETE /auth/me (GDPR deletion with 30-day retention) in `backend/src/api/auth.py`
-- [ ] T112 [US10] Add user data isolation middleware: inject current user_id into all queries; validate document/schedule/lesson ownership on every request in `backend/src/core/dependencies.py`
+- [x] T110 [US10] Build on T017: Implement POST /auth/register (email + password validation, verification email), POST /auth/login (JWT pair response), POST /auth/refresh, POST /auth/logout in `backend/src/api/auth.py`
+- [x] T111 [US10] Implement POST /auth/oauth/{provider} (Google, GitHub callback), GET /auth/me, DELETE /auth/me (GDPR deletion with 30-day retention) in `backend/src/api/auth.py`
+- [x] T112 [US10] Add user data isolation middleware: inject current user_id into all queries; validate document/schedule/lesson ownership on every request in `backend/src/core/dependencies.py`
 
 ### Frontend for User Story 10
 
-- [ ] T113 [P] [US10] Create login, register, OAuth callback pages with form validation and error display in `frontend/src/app/(auth)/`
-- [ ] T114 [US10] Create useAuth hook: token storage, refresh flow, redirect on expiry, user profile in `frontend/src/hooks/useAuth.ts`
+- [x] T113 [P] [US10] Create login, register, OAuth callback pages with form validation and error display in `frontend/src/app/(auth)/`
+- [x] T114 [US10] Create useAuth hook: token storage, refresh flow, redirect on expiry, user profile in `frontend/src/hooks/useAuth.ts`
 
 **Checkpoint**: Secure multi-user system with data isolation
 
@@ -356,18 +356,18 @@
 
 ### Backend for User Story 11
 
-- [ ] T115 [US11] Create Donation SQLAlchemy model in `backend/src/models/donation.py`; Alembic migration: `backend/alembic/versions/006_donations.py`
-- [ ] T116 [US11] Implement GET /donations/support (platform links) and GET /donations (transparency list) in `backend/src/api/donations.py`
+- [x] T115 [US11] Create Donation SQLAlchemy model in `backend/src/models/donation.py`; Alembic migration: `backend/alembic/versions/006_donations.py`
+- [x] T116 [US11] Implement GET /donations/support (platform links) and GET /donations (transparency list) in `backend/src/api/donations.py`
 
 ### Frontend for User Story 11
 
-- [ ] T117 [US11] Create donation/support page with GitHub Sponsors and Ko-fi links, community donor list (anonymous option respected), sustainability statement in `frontend/src/app/support/page.tsx`
+- [x] T117 [US11] Create donation/support page with GitHub Sponsors and Ko-fi links, community donor list (anonymous option respected), sustainability statement in `frontend/src/app/support/page.tsx`
 
 ### Team Features (P3 — per FR-033)
 
-- [ ] T117a [P] [US11] Create Team model and member invitation system (Team Admin sends invite, recipient accepts, shared library access) in `backend/src/models/team.py`; Alembic migration: `backend/alembic/versions/007_teams.py`
-- [ ] T117b [US11] Implement team management API: POST /teams, POST /teams/{id}/invite, GET /teams/{id}/members, shared document library endpoints in `backend/src/api/teams.py`
-- [ ] T117c [US11] Create team management page: invite members, view member list, shared document library, admin panel in `frontend/src/app/team/page.tsx`
+- [x] T117a [P] [US11] Create Team model and member invitation system (Team Admin sends invite, recipient accepts, shared library access) in `backend/src/models/team.py`; Alembic migration: `backend/alembic/versions/007_teams.py`
+- [x] T117b [US11] Implement team management API: POST /teams, POST /teams/{id}/invite, GET /teams/{id}/members, shared document library endpoints in `backend/src/api/teams.py`
+- [x] T117c [US11] Create team management page: invite members, view member list, shared document library, admin panel in `frontend/src/app/team/page.tsx`
 
 **Checkpoint**: Community can support the project — all features remain 100% free. Team features available for collaborative learning.
 
@@ -377,19 +377,19 @@
 
 **Purpose**: Improvements affecting multiple user stories
 
-- [ ] T118 [P] Implement virus scanning for uploaded PDFs: ClamAV async scan before parse queue in `backend/src/services/virus_scan_service.py`
-- [ ] T119 [P] Implement rate limiting: Redis token bucket, 100 req/min per user default, higher for SSE in `backend/src/core/rate_limit.py`
-- [ ] T120 [P] Implement CSP headers, CORS configuration, input sanitization for filenames/tags/search queries in `backend/src/core/security.py`
-- [ ] T121 [P] Implement GDPR data export endpoint: JSON export of all user data within 48 hours in `backend/src/api/auth.py`
-- [ ] T122 [P] Configure Sentry error tracking, Prometheus metrics export, Grafana dashboard template in `backend/src/core/monitoring.py`, `docker/prometheus.yml`
-- [ ] T122a [P] Implement public status page (health endpoint aggregation) and automated uptime monitoring with alerting (UptimeRobot or similar) to verify SC-016 (99.5% uptime SLA) in `docker/status-page/`
-- [ ] T123 [P] Add responsive design polish: test all pages at 375px, 768px, 1024px, 1440px; fix layout issues in `frontend/src/app/`
-- [ ] T124 [P] Add loading skeletons for all data-dependent views; add empty states (no documents, no lessons, no search results, zero streak) in `frontend/src/components/`
-- [ ] T125 [P] Add keyboard navigation and screen reader accessibility pass: focus trapping for modals, aria-labels, 44px touch targets in `frontend/src/components/`
-- [ ] T126 Run Lighthouse audit; achieve >90 Performance, Accessibility, Best Practices, SEO. Fix any violations.
-- [ ] T127 Run quickstart.md validation: verify all curl commands work end-to-end with seed data. Verify SC-001 through SC-016 measurable outcomes.
-- [ ] T128 Add end-to-end Playwright tests for critical user journeys: auth → upload → parse → search → schedule → study → dashboard in `frontend/tests/e2e/`
-- [ ] T129 [P] Update all dependency versions, run security audit, regenerate lockfiles in `backend/requirements.txt`, `frontend/package.json`, `mobile/package.json`
+- [x] T118 [P] Implement virus scanning for uploaded PDFs: ClamAV async scan before parse queue in `backend/src/services/virus_scan_service.py`
+- [x] T119 [P] Implement rate limiting: Redis token bucket, 100 req/min per user default, higher for SSE in `backend/src/core/rate_limit.py`
+- [x] T120 [P] Implement CSP headers, CORS configuration, input sanitization for filenames/tags/search queries in `backend/src/core/security.py`
+- [x] T121 [P] Implement GDPR data export endpoint: JSON export of all user data within 48 hours in `backend/src/api/auth.py`
+- [x] T122 [P] Configure Sentry error tracking, Prometheus metrics export, Grafana dashboard template in `backend/src/core/monitoring.py`, `docker/prometheus.yml`
+- [x] T122a [P] Implement public status page (health endpoint aggregation) and automated uptime monitoring with alerting (UptimeRobot or similar) to verify SC-016 (99.5% uptime SLA) in `docker/status-page/`
+- [x] T123 [P] Add responsive design polish: test all pages at 375px, 768px, 1024px, 1440px; fix layout issues in `frontend/src/app/`
+- [x] T124 [P] Add loading skeletons for all data-dependent views; add empty states (no documents, no lessons, no search results, zero streak) in `frontend/src/components/`
+- [x] T125 [P] Add keyboard navigation and screen reader accessibility pass: focus trapping for modals, aria-labels, 44px touch targets in `frontend/src/components/`
+- [x] T126 Run Lighthouse audit; achieve >90 Performance, Accessibility, Best Practices, SEO. Fix any violations.
+- [x] T127 Run quickstart.md validation: verify all curl commands work end-to-end with seed data. Verify SC-001 through SC-016 measurable outcomes.
+- [x] T128 Add end-to-end Playwright tests for critical user journeys: auth → upload → parse → search → schedule → study → dashboard in `frontend/tests/e2e/`
+- [x] T129 [P] Update all dependency versions, run security audit, regenerate lockfiles in `backend/requirements.txt`, `frontend/package.json`, `mobile/package.json`
 
 ---
 
