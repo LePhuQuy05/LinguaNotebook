@@ -97,13 +97,16 @@ export default function DocumentViewerPage() {
         <ParseProgress documentId={id} onComplete={() => window.location.reload()} />
       )}
 
-      {/* Content blocks */}
-      {doc.blocks.length === 0 && doc.status === "completed" ? (
+      {/* Parse complete with no blocks */}
+      {doc.status === "completed" && doc.blocks.length === 0 && (
         <div className="py-16 text-center">
           <FileText className="mx-auto h-16 w-16 text-muted-foreground" />
           <p className="mt-4 text-foreground-muted">No content blocks extracted.</p>
         </div>
-      ) : doc.blocks.length > 0 ? (
+      )}
+
+      {/* Parsed content blocks */}
+      {doc.blocks.length > 0 && (
         <div className="space-y-4">
           {doc.blocks.map((block) => (
             <div
@@ -126,6 +129,13 @@ export default function DocumentViewerPage() {
               />
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Failed state */}
+      {doc.status === "failed" && (
+        <div className="py-16 text-center">
+          <p className="text-destructive">Parsing failed: {doc.error_message || "Unknown error"}</p>
         </div>
       )}
     </div>
