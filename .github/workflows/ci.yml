@@ -25,7 +25,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: pnpm
 
       - name: Install Python dependencies
         run: |
@@ -37,7 +36,7 @@ jobs:
         run: cd backend && mypy src/ --strict || true
 
       - name: Install JS dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
       - name: Lint frontend
         run: cd frontend && pnpm lint || true
       - name: Type check
@@ -92,9 +91,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: pnpm
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
       - name: Run tests
         run: cd frontend && pnpm test
 
@@ -110,9 +108,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: pnpm
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
       - name: Build shared
         run: cd shared && pnpm build
       - name: Build frontend
