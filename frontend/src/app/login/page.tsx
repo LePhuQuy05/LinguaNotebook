@@ -15,24 +15,16 @@ export default function LoginPage() {
     e.preventDefault();
     setError("");
     setLoading(true);
-
     try {
       const res = await fetch("/api/v1/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-
-      if (!res.ok) {
-        const msg = await res.text();
-        setError(msg || "Invalid email or password");
-        return;
-      }
-
+      if (!res.ok) { setError("Invalid email or password"); return; }
       const data = await res.json();
       localStorage.setItem("token", data.access_token);
       localStorage.setItem("refresh_token", data.refresh_token);
-      localStorage.setItem("user", JSON.stringify(data.user));
       router.push("/documents");
     } catch {
       setError("Network error — is the API running?");
@@ -43,66 +35,57 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
-      <div className="w-full max-w-sm space-y-6">
+      <div className="w-full max-w-md space-y-8">
         <div className="text-center">
-          <h1 className="font-heading text-heading-xl text-primary-600">
+          <Link href="/" className="font-heading text-3xl font-bold text-primary-600">
             LinguaNotebook
-          </h1>
-          <p className="mt-2 text-foreground-muted">Sign in to your account</p>
+          </Link>
+          <p className="mt-2 text-slate-500">Welcome back</p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-4">
-          {error && (
-            <div className="rounded-lg bg-destructive-light p-3 text-sm text-destructive">
-              {error}
+        <div className="rounded-2xl border border-slate-100 bg-white p-8 shadow-lg">
+          <form onSubmit={handleLogin} className="space-y-5">
+            {error && (
+              <div className="rounded-lg bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+                {error}
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-slate-700">Email</label>
+              <input
+                type="email" value={email} required
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:border-primary-500 focus:bg-white focus:outline-none focus:ring-4 focus:ring-primary-50 transition-all"
+                placeholder="you@example.com"
+              />
             </div>
-          )}
 
-          <div>
-            <label className="mb-1 block text-sm font-medium">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-foreground placeholder:text-foreground-subtle focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100"
-              placeholder="test@test.com"
-            />
-          </div>
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-slate-700">Password</label>
+              <input
+                type="password" value={password} required
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:border-primary-500 focus:bg-white focus:outline-none focus:ring-4 focus:ring-primary-50 transition-all"
+                placeholder="Enter your password"
+              />
+            </div>
 
-          <div>
-            <label className="mb-1 block text-sm font-medium">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-foreground placeholder:text-foreground-subtle focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100"
-              placeholder="test1234"
-            />
-          </div>
+            <button
+              type="submit" disabled={loading}
+              className="w-full rounded-xl bg-gradient-to-r from-primary-600 to-primary-500 py-3.5 font-semibold text-white shadow-lg shadow-primary-200 transition-all hover:shadow-xl hover:shadow-primary-300 hover:translate-y-[-1px] active:translate-y-0 disabled:opacity-70"
+            >
+              {loading ? "Signing in..." : "Sign In"}
+            </button>
+          </form>
+        </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-lg bg-primary-600 py-3 font-medium text-white transition-colors hover:bg-primary-700 disabled:opacity-50"
-          >
-            {loading ? "Signing in..." : "Sign in"}
-          </button>
-        </form>
-
-        <p className="text-center text-sm text-foreground-muted">
+        <p className="text-center text-sm text-slate-500">
           Don't have an account?{" "}
-          <Link href="/register" className="text-primary-600 hover:underline">
-            Register
+          <Link href="/register" className="font-semibold text-primary-600 hover:underline">
+            Create one
           </Link>
         </p>
-
-        <div className="rounded-lg bg-muted p-3 text-xs text-foreground-muted">
-          <p className="font-medium">Test account:</p>
-          <p>Email: test@test.com</p>
-          <p>Password: test1234</p>
-        </div>
       </div>
     </div>
   );
