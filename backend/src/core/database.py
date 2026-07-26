@@ -27,8 +27,8 @@ async def get_db() -> AsyncSession:
 async def check_database() -> str:
     """Health check: verify database connectivity."""
     try:
-        async with engine.connect() as conn:
-            await conn.execute(await conn.execute.__code__)  # no-op ping
+        conn = await engine.connect()
+        await conn.close()
         return "connected"
     except Exception as e:
         return f"error: {e}"
