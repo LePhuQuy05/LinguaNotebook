@@ -70,33 +70,33 @@
 
 ### Tests for User Story 1
 
-- [ ] T025 [P] [US1] Contract test for POST /documents/upload and GET /documents/{id}/parse/progress (SSE) in `backend/tests/contract/test_documents_api.py`
-- [ ] T026 [P] [US1] Integration test for full parse pipeline (PDF → markdown) in `backend/tests/integration/test_parser_pipeline.py`
+- [x] T025 [P] [US1] Contract test for POST /documents/upload and GET /documents/{id}/parse/progress (SSE) in `backend/tests/contract/test_documents_api.py`
+- [x] T026 [P] [US1] Integration test for full parse pipeline (PDF → markdown) in `backend/tests/integration/test_parser_pipeline.py`
 
 ### Models for User Story 1
 
-- [ ] T027 [P] [US1] Create Document and ContentBlock SQLAlchemy models with DocumentStatus enum in `backend/src/models/document.py`
-- [ ] T028 [P] [US1] Create Alembic migration for documents, content_blocks tables: `backend/alembic/versions/002_documents.py`
+- [x] T027 [P] [US1] Create Document and ContentBlock SQLAlchemy models with DocumentStatus enum in `backend/src/models/document.py`
+- [x] T028 [P] [US1] Create Alembic migration for documents, content_blocks tables: `backend/alembic/versions/002_documents.py`
 
 ### Services for User Story 1
 
-- [ ] T029 [US1] Implement HPD-Parsing wrapper: PyMuPDF render → dynamic tiling → model.generate_hpd() per HPD-PARSING-GUIDE in `backend/src/utils/hpd_parser.py`
-- [ ] T030 [US1] Implement parser service: orchestrate PDF upload → save to storage → queue Celery task → track progress in Redis in `backend/src/services/parser_service.py`
-- [ ] T031 [P] [US1] Implement Celery parse worker: load HPD model once, process pages sequentially, emit progress to Redis, handle CPU/GPU paths in `backend/src/workers/parse_worker.py`
+- [x] T029 [US1] Implement HPD-Parsing wrapper: PyMuPDF render → dynamic tiling → model.generate_hpd() per HPD-PARSING-GUIDE in `backend/src/utils/hpd_parser.py`
+- [x] T030 [US1] Implement parser service: orchestrate PDF upload → save to storage → queue Celery task → track progress in Redis in `backend/src/services/parser_service.py`
+- [x] T031 [P] [US1] Implement Celery parse worker: load HPD model once, process pages sequentially, emit progress to Redis, handle CPU/GPU paths in `backend/src/workers/parse_worker.py`
 
 ### API for User Story 1
 
-- [ ] T032 [US1] Implement POST /documents/upload (multipart PDF, validate size/type, create Document, queue parse) in `backend/src/api/documents.py`
-- [ ] T033 [US1] Implement GET /documents/{id}/parse/progress (SSE endpoint: poll Redis job state, stream events) in `backend/src/api/documents.py`
-- [ ] T034 [US1] Implement GET /documents (paginated list, filter by status/language) and GET /documents/{id} (detail with blocks) in `backend/src/api/documents.py`
-- [ ] T035 [US1] Implement PATCH /documents/{id} (edit metadata, language, tags) and DELETE /documents/{id} (with SRS card warning) in `backend/src/api/documents.py`
+- [x] T032 [US1] Implement POST /documents/upload (multipart PDF, validate size/type, create Document, queue parse) in `backend/src/api/documents.py`
+- [x] T033 [US1] Implement GET /documents/{id}/parse/progress (SSE endpoint: poll Redis job state, stream events) in `backend/src/api/documents.py`
+- [x] T034 [US1] Implement GET /documents (paginated list, filter by status/language) and GET /documents/{id} (detail with blocks) in `backend/src/api/documents.py`
+- [x] T035 [US1] Implement PATCH /documents/{id} (edit metadata, language, tags) and DELETE /documents/{id} (with SRS card warning) in `backend/src/api/documents.py`
 
 ### Frontend for User Story 1
 
-- [ ] T036 [P] [US1] Create DocumentUploader component with drag-and-drop, file size validation, language/dpi selectors in `frontend/src/components/document/DocumentUploader.tsx`
-- [ ] T037 [P] [US1] Create ParseProgress component with SSE listener, progress bar, page counter, ETA display in `frontend/src/components/document/ParseProgress.tsx`
-- [ ] T038 [US1] Create DocumentViewer page: rendered markdown with block types visually distinguished, page navigation in `frontend/src/app/documents/[id]/page.tsx`
-- [ ] T039 [US1] Create Documents list page with upload zone, status badges, language filters in `frontend/src/app/documents/page.tsx`
+- [x] T036 [P] [US1] Create DocumentUploader component with drag-and-drop, file size validation, language/dpi selectors in `frontend/src/components/document/DocumentUploader.tsx`
+- [x] T037 [P] [US1] Create ParseProgress component with SSE listener, progress bar, page counter, ETA display in `frontend/src/components/document/ParseProgress.tsx`
+- [x] T038 [US1] Create DocumentViewer page: rendered markdown with block types visually distinguished, page navigation in `frontend/src/app/documents/[id]/page.tsx`
+- [x] T039 [US1] Create Documents list page with upload zone, status badges, language filters in `frontend/src/app/documents/page.tsx`
 
 **Checkpoint**: User can upload a PDF, watch it parse, and view structured output. Deployable as MVP.
 
