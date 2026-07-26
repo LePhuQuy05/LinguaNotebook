@@ -591,47 +591,30 @@ main.py
 - **File**: `frontend/src/styles/globals.css` ✅ **ĐÃ SỬA** — Đã dùng CSS variables trực tiếp
 
 ### BUG 7: Celery worker không chạy
-- **File**: `docker/docker-compose.yml` ⚠️ **CHƯA SỬA**
-- **Fix**: Start với `docker compose --profile gpu up -d` hoặc bỏ `profiles: [gpu]`
-- **Hoặc**: Chạy worker trực tiếp: `docker exec docker-backend-api-1 celery -A src.workers.celery_app worker --loglevel=info`
+- **File**: `docker/docker-compose.yml` ✅ **ĐÃ SỬA** — Đã thêm `profiles: [gpu, all]`
+- Chạy worker: `docker exec docker-backend-api-1 celery -A src.workers.celery_app worker --loglevel=info`
 
 ### BUG 8: Database tables không tự động tạo
-- ⚠️ **CHƯA CÓ MIGRATIONS** — Cần tạo Alembic migrations hoặc gọi `Base.metadata.create_all()` trong lifespan
-- **Fix tạm**: Đã chạy thủ công `Base.metadata.create_all()` trong container
+- ✅ **ĐÃ SỬA** — `main.py` lifespan tự động gọi `Base.metadata.create_all()`
 
 ### BUG 9: HPD model chưa download
 - **Folder**: `backend/model/` — trống
 - **Cần**: Download từ HuggingFace `PaddlePaddle/HPD-Parsing` (~2GB)
-- **Cách**: 
-  ```bash
-  cd D:/LanguageNotebook/backend
-  git clone https://huggingface.co/PaddlePaddle/HPD-Parsing model
-  ```
-  Hoặc dùng `huggingface_hub.snapshot_download()`
+- **Cách**: `cd backend && huggingface-cli download PaddlePaddle/HPD-Parsing --local-dir ./model`
 
 ### BUG 10: Parse worker không lưu ContentBlock vào DB
-- **File**: `backend/src/workers/parse_worker.py`
-- **Issue**: Sau khi parse PDF → markdown, worker upload kết quả lên MinIO nhưng KHÔNG parse markdown thành ContentBlock records và lưu vào PostgreSQL. Cần thêm:
-  ```python
-  # Sau khi có combined_markdown:
-  # 1. Parse markdown để extract blocks
-  # 2. Tạo ContentBlock records trong DB
-  # 3. Trigger embed worker
-  ```
+- **File**: `backend/src/workers/parse_worker.py` ✅ **ĐÃ SỬA**
+- Đã thêm `_save_content_blocks()` — parse markdown → ContentBlock records → update Document status → trigger embed worker
 
 ### BUG 11: Frontend API calls không có base URL
-- **Files**: Tất cả frontend components
-- **Issue**: `fetch("/api/v1/...")` dùng relative URL → sẽ gọi tới `localhost:3000/api/v1/...` nhưng API ở port 8000
-- **Fix**: Cần Next.js `rewrites` trong `next.config.js`:
-  ```js
-  async rewrites() {
-    return [{ source: '/api/:path*', destination: 'http://localhost:8000/api/:path*' }]
-  }
-  ```
+- **File**: `frontend/next.config.js` ✅ **ĐÃ SỬA** — Đã thêm Next.js rewrites
 
 ### BUG 12: pnpm-lock.yaml không tồn tại
 - **Issue**: CI yêu cầu lockfile
 - **Fix**: Sau khi `pnpm install` thành công, commit `pnpm-lock.yaml`
+
+### BUG 13: Không có trang đăng nhập (MỚI)
+- ✅ **ĐÃ SỬA** — Login page `/login`, Register page `/register`, Navbar Sign in button
 
 ---
 
@@ -684,15 +667,20 @@ curl http://localhost:6333/collections
 
 ## 8. THỨ TỰ SỬA ƯU TIÊN
 
-| Priority | Bug | Impact |
+| Priority | Bug | Status |
 |----------|-----|--------|
-| 🔴 P0 | #11 — API proxy (frontend không gọi được API) | Frontend hoàn toàn không hoạt động |
-| 🔴 P0 | #9 — Download HPD model | Không parse được PDF |
-| 🔴 P0 | #10 — Lưu ContentBlock sau parse | Parse xong nhưng không xem được kết quả |
-| 🟡 P1 | #7 — Celery worker không chạy | Parse không chạy background |
-| 🟡 P1 | #8 — Auto-create tables khi startup | Mỗi lần restart phải tạo table thủ công |
-| 🟡 P1 | #12 — pnpm-lock.yaml | CI fail |
-| 🟢 P2 | #8 — Alembic migrations | Production readiness |
+| 🔴 P0 | #11 — API proxy | ✅ Fixed |
+| 🔴 P0 | #13 — No login page | ✅ Fixed |
+| 🔴 P0 | #10 — Lưu ContentBlock sau parse | ✅ Fixed |
+| 🔴 P0 | #9 — Download HPD model | ⚠️ Cần user action |
+| 🟡 P1 | #7 — Celery worker | ✅ Fixed (profiles) |
+| 🟡 P1 | #8 — Auto-create tables | ✅ Fixed (lifespan) |
+| 🟡 P1 | #1 — Auth bcrypt bug | ✅ Fixed |
+| 🟡 P1 | #2 — primary_key bug | ✅ Fixed |
+| 🟡 P1 | #3 — date import bug | ✅ Fixed |
+| 🟡 P1 | #4 — API routes not registered | ✅ Fixed |
+| 🟢 P2 | #12 — pnpm-lock.yaml | ⚠️ Cần user action |
+| 🟢 P2 | Alembic migrations | Deferred |
 
 ---
 
