@@ -110,30 +110,30 @@
 
 ### Tests for User Story 2
 
-- [ ] T040 [P] [US2] Contract test for GET /rag/search in `backend/tests/contract/test_rag_api.py`
-- [ ] T041 [P] [US2] Integration test for chunk → embed → index → search pipeline in `backend/tests/integration/test_rag_pipeline.py`
+- [x] T040 [P] [US2] Contract test for GET /rag/search in `backend/tests/contract/test_rag_api.py`
+- [x] T041 [P] [US2] Integration test for chunk → embed → index → search pipeline in `backend/tests/integration/test_rag_pipeline.py`
 
 ### Models & Schema for User Story 2
 
-- [ ] T042 [US2] Create KnowledgeSegment SQLAlchemy model in `backend/src/models/knowledge_segment.py`
-- [ ] T043 [US2] Create per-user Qdrant collection with dense (1024-dim) + sparse (BM25) vector config in `backend/src/core/qdrant.py`
+- [x] T042 [US2] Create KnowledgeSegment SQLAlchemy model in `backend/src/models/knowledge_segment.py`
+- [x] T043 [US2] Create per-user Qdrant collection with dense (1024-dim) + sparse (BM25) vector config in `backend/src/core/qdrant.py`
 
 ### Services for User Story 2
 
-- [ ] T044 [P] [US2] Implement smart chunker: parse <BLOCK> tags, split by type (headers intact, tables intact, paragraphs at sentence boundaries, 200-500 tokens), 1-sentence overlap, min 50 tokens in `backend/src/utils/chunker.py`
-- [ ] T045 [US2] Implement embed service: load BGE-M3 model, batch encode chunks (32/batch), upsert to Qdrant with metadata payload in `backend/src/services/embed_service.py`
-- [ ] T046 [US2] Implement RAG service: hybrid search with RRF fusion (k=60), metadata filter pushdown (language, block_type, difficulty, document_id), highlight spans in `backend/src/services/rag_service.py`
-- [ ] T047 [US2] Implement Celery embed worker: trigger on parse completion, chunk → embed → index all pages in `backend/src/workers/embed_worker.py`
+- [x] T044 [P] [US2] Implement smart chunker: parse <BLOCK> tags, split by type (headers intact, tables intact, paragraphs at sentence boundaries, 200-500 tokens), 1-sentence overlap, min 50 tokens in `backend/src/utils/chunker.py`
+- [x] T045 [US2] Implement embed service: load BGE-M3 model, batch encode chunks (32/batch), upsert to Qdrant with metadata payload in `backend/src/services/embed_service.py`
+- [x] T046 [US2] Implement RAG service: hybrid search with RRF fusion (k=60), metadata filter pushdown (language, block_type, difficulty, document_id), highlight spans in `backend/src/services/rag_service.py`
+- [x] T047 [US2] Implement Celery embed worker: trigger on parse completion, chunk → embed → index all pages in `backend/src/workers/embed_worker.py`
 
 ### API for User Story 2
 
-- [ ] T048 [US2] Implement GET /rag/search (query, language/type/difficulty filters, pagination) in `backend/src/api/rag.py`
-- [ ] T049 [US2] Implement GET /rag/chunks/{id} (single segment with surrounding context) and GET /rag/stats in `backend/src/api/rag.py`
+- [x] T048 [US2] Implement GET /rag/search (query, language/type/difficulty filters, pagination) in `backend/src/api/rag.py`
+- [x] T049 [US2] Implement GET /rag/chunks/{id} (single segment with surrounding context) and GET /rag/stats in `backend/src/api/rag.py`
 
 ### Frontend for User Story 2
 
-- [ ] T050 [P] [US2] Create SearchBar component with autocomplete, filter chips, results list with highlight spans in `frontend/src/components/document/SearchBar.tsx`
-- [ ] T051 [US2] Add search to document viewer and main navigation: search results overlay with source document/page links in `frontend/src/app/documents/[id]/page.tsx`
+- [x] T050 [P] [US2] Create SearchBar component with autocomplete, filter chips, results list with highlight spans in `frontend/src/components/document/SearchBar.tsx`
+- [x] T051 [US2] Add search to document viewer and main navigation: search results overlay with source document/page links in `frontend/src/app/documents/[id]/page.tsx`
 
 **Checkpoint**: User can search across all parsed documents with ranked, contextual results
 
