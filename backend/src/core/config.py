@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     self_hosted: bool = False
     log_level: str = "INFO"
     gpu_enabled: bool = False
+    gpu_type: str = "xpu"  # "cuda" for NVIDIA, "xpu" for Intel Arc
 
     # PostgreSQL
     database_url: str = (

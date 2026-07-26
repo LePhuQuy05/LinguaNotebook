@@ -34,21 +34,26 @@ class HPDFParser:
     """Parse PDF page-by-page using the HPD model.
 
     The model is loaded once and kept resident in memory.
-    CPU execution is the default path; GPU acceleration is optional.
+    Supports: CUDA (NVIDIA), XPU (Intel Arc), CPU (fallback).
+
+    Per HPD-PARSING-GUIDE.md Section 2.2, 3.1, 7.3
     """
 
-    def __init__(self, model_dir: str = "./model", use_gpu: bool = False):
+    def __init__(self, model_dir: str = "./model", use_gpu: bool = False, gpu_type: str = "cuda"):
         self.model_dir = model_dir
         self.use_gpu = use_gpu
+        self.gpu_type = gpu_type  # "cuda" for NVIDIA, "xpu" for Intel Arc
         self.model = None
         self.tokenizer = None
         self._loaded = False
 
     def load_model(self) -> None:
-        """Load the HPD model and tokenizer. Called once at worker startup."""
-        import sys
-        import os
+        """Load HPD model and tokenizer. Called once at worker startup.
 
+        Per guide: use_fast=False on tokenizer, attn_implementation='eager'
+        for non-CUDA, load_mtp_weights() after loading.
+        """
+        import sys
         sys.path.insert(0, self.model_dir)
 
         from transformers import AutoModel, AutoTokenizer
@@ -56,27 +61,36 @@ class HPDFParser:
         logger.info(f"Loading HPD model from {self.model_dir}...")
         t0 = time.time()
 
+        # Tokenizer: use_fast=False is CRITICAL (guide §3.3)
         self.tokenizer = AutoTokenizer.from_pretrained(
-            self.model_dir, trust_remote_code=True, use_fast=False
+            self.model_dir, trust_remote_code=True, use_fast=False,
         )
 
-        load_kwargs = dict(
+        # Model: always eager attention for safety (guide §7.3)
+        self.model = AutoModel.from_pretrained(
+            self.model_dir,
             trust_remote_code=True,
             dtype=torch.bfloat16,
             attn_implementation="eager",
         )
 
-        self.model = AutoModel.from_pretrained(self.model_dir, **load_kwargs)
-
-        if self.use_gpu and torch.cuda.is_available():
-            self.model = self.model.to("cuda")
-            logger.info("HPD model loaded on CUDA GPU")
+        # Move to GPU (guide §3.1)
+        if self.use_gpu:
+            if self.gpu_type == "xpu" and hasattr(torch, 'xpu') and torch.xpu.is_available():
+                self.model = self.model.to("xpu")
+                logger.info("HPD model loaded on Intel XPU GPU")
+            elif torch.cuda.is_available():
+                self.model = self.model.to("cuda")
+                logger.info("HPD model loaded on NVIDIA CUDA GPU")
+            else:
+                self.model = self.model.to("cpu")
+                logger.warning("GPU requested but not available, using CPU")
         else:
             self.model = self.model.to("cpu")
             logger.info("HPD model loaded on CPU")
 
         self.model.eval()
-        self.model.load_mtp_weights()
+        self.model.load_mtp_weights()  # Activate P-MTP (guide §3.1)
         self._loaded = True
 
         logger.info(f"HPD model ready in {time.time() - t0:.1f}s")
@@ -183,7 +197,9 @@ class HPDFParser:
                 if "img" in dir():
                     del img
                 if idx % 10 == 9:
-                    if self.use_gpu and torch.cuda.is_available():
+                    if self.gpu_type == "xpu" and hasattr(torch, 'xpu'):
+                        torch.xpu.empty_cache()
+                    elif torch.cuda.is_available():
                         torch.cuda.empty_cache()
 
             if progress_callback:

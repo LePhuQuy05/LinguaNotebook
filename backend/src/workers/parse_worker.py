@@ -19,12 +19,14 @@ _parser: HPDFParser | None = None
 
 
 def _get_parser() -> HPDFParser:
-    """Lazy-load the HPD parser. Called at worker startup on first task."""
+    """Lazy-load HPD parser. Called at worker startup on first task."""
     global _parser
     if _parser is None:
+        gpu_type = getattr(settings, 'gpu_type', 'cuda')
         _parser = HPDFParser(
             model_dir=settings.hpd_model_path,
             use_gpu=settings.gpu_enabled,
+            gpu_type=gpu_type,
         )
         _parser.load_model()
     return _parser
