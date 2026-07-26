@@ -55,3 +55,4 @@ backend/model/
 audio_cache/
 *.mp3
 *.wav
+sqlmap-tool/

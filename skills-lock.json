@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "skills": {
+    "mysql": {
+      "source": "planetscale/database-skills",
+      "sourceType": "github",
+      "skillPath": "skills/mysql/SKILL.md",
+      "computedHash": "a74d7d018c4a9cfe4fd6e37f8758ef03272cde3f3dc2444c4f299636f4b3d275"
+    },
+    "neki": {
+      "source": "planetscale/database-skills",
+      "sourceType": "github",
+      "skillPath": "skills/neki/SKILL.md",
+      "computedHash": "80032a26c30d09278d83ebd92bd62f6102d9d2ec2caab5e90be8edb2bfa86ec4"
+    },
+    "postgres": {
+      "source": "planetscale/database-skills",
+      "sourceType": "github",
+      "skillPath": "skills/postgres/SKILL.md",
+      "computedHash": "f0632544d951152bf28c4f5cbb02593af296a3abe75f8949d003718c61a9a90b"
+    },
+    "vitess": {
+      "source": "planetscale/database-skills",
+      "sourceType": "github",
+      "skillPath": "skills/vitess/SKILL.md",
+      "computedHash": "160a706dcc059d68bb0705c55df087bb9c8eaecd6a0575fa10555df478a51281"
+    }
+  }
+}
