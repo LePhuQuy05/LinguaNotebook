@@ -54,9 +54,6 @@ def parse_pdf_task(self, document_id: str, object_key: str, dpi: int = 100) -> d
 
     Saves combined markdown to storage and updates document status in DB.
     """
-    from src.core.storage import get_storage_client
-    import io
-
     parser = _get_parser()
 
     try:
@@ -66,8 +63,8 @@ def parse_pdf_task(self, document_id: str, object_key: str, dpi: int = 100) -> d
         pdf_bytes = response["Body"].read()
 
         # Write to temp file (PyMuPDF needs a file path)
-        import tempfile
         import os
+        import tempfile
         with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
             tmp.write(pdf_bytes)
             tmp_path = tmp.name
