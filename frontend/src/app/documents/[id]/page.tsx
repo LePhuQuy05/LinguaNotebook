@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { ArrowLeft, FileText } from "lucide-react";
 import Link from "next/link";
+import { ParseProgress } from "../../../components/document/ParseProgress";
 
 interface ContentBlock {
   id: string;
@@ -91,17 +92,18 @@ export default function DocumentViewerPage() {
         </div>
       </div>
 
+      {/* Show parse progress for queued/parsing docs */}
+      {(doc.status === "queued" || doc.status === "parsing" || doc.status === "uploading") && (
+        <ParseProgress documentId={id} onComplete={() => window.location.reload()} />
+      )}
+
       {/* Content blocks */}
-      {doc.blocks.length === 0 ? (
+      {doc.blocks.length === 0 && doc.status === "completed" ? (
         <div className="py-16 text-center">
           <FileText className="mx-auto h-16 w-16 text-muted-foreground" />
-          <p className="mt-4 text-foreground-muted">
-            {doc.status === "parsing"
-              ? "Document is still being parsed..."
-              : "No content blocks extracted yet."}
-          </p>
+          <p className="mt-4 text-foreground-muted">No content blocks extracted.</p>
         </div>
-      ) : (
+      ) : doc.blocks.length > 0 ? (
         <div className="space-y-4">
           {doc.blocks.map((block) => (
             <div

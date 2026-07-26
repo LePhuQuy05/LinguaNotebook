@@ -31,21 +31,25 @@ def _get_parser() -> HPDFParser:
 
 
 def _progress_callback(document_id: str, info: ProgressInfo) -> None:
-    """Emit parsing progress to Redis for SSE streaming."""
-    import asyncio
-    loop = asyncio.new_event_loop()
+    """Emit parsing progress to Redis for SSE streaming (sync)."""
+    import json
+    from src.core.redis import sync_redis_client
     try:
-        loop.run_until_complete(set_parse_progress(document_id, {
-            "status": info.status,
-            "current_page": info.current_page,
-            "total_pages": info.total_pages,
-            "elapsed_sec": info.elapsed_sec,
-            "eta_sec": info.eta_sec,
-            "pages_per_sec": info.pages_per_sec,
-            "errors": info.errors,
-        }))
-    finally:
-        loop.close()
+        sync_redis_client.setex(
+            f"parse:progress:{document_id}",
+            3600,
+            json.dumps({
+                "status": info.status,
+                "current_page": info.current_page,
+                "total_pages": info.total_pages,
+                "elapsed_sec": info.elapsed_sec,
+                "eta_sec": info.eta_sec,
+                "pages_per_sec": info.pages_per_sec,
+                "errors": info.errors,
+            }, default=str),
+        )
+    except Exception as e:
+        logger.error(f"Failed to write progress to Redis: {e}")
 
 
 async def _save_content_blocks(document_id: str, markdown: str, errors: list):
