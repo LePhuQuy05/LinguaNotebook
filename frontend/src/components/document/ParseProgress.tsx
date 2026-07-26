@@ -42,11 +42,7 @@ export function ParseProgress({ documentId, onComplete }: ParseProgressProps) {
     };
 
     eventSource.onerror = () => {
-      // Reconnect after 3 seconds on error
       eventSource.close();
-      setTimeout(() => {
-        // Will reconnect on next render cycle via useEffect cleanup
-      }, 3000);
     };
 
     return () => eventSource.close();
@@ -55,7 +51,11 @@ export function ParseProgress({ documentId, onComplete }: ParseProgressProps) {
   if (!progress) {
     return (
       <div className="p-6 text-center text-foreground-muted">
-        Connecting to parse stream...
+        <div className="mb-3 h-8 w-8 mx-auto animate-spin rounded-full border-4 border-primary-200 border-t-primary-600" />
+        Waiting for worker to pick up this job...
+        <p className="mt-2 text-xs text-foreground-subtle">
+          Make sure the Celery worker is running (GPU or CPU mode).
+        </p>
       </div>
     );
   }
