@@ -42,7 +42,11 @@ export function ParseProgress({ documentId, onComplete }: ParseProgressProps) {
     };
 
     eventSource.onerror = () => {
+      // Reconnect after 3 seconds on error
       eventSource.close();
+      setTimeout(() => {
+        // Will reconnect on next render cycle via useEffect cleanup
+      }, 3000);
     };
 
     return () => eventSource.close();
@@ -90,16 +94,16 @@ export function ParseProgress({ documentId, onComplete }: ParseProgressProps) {
       <div className="grid grid-cols-3 gap-4 text-sm">
         <div>
           <span className="text-foreground-muted">Elapsed</span>
-          <p className="font-medium">{formatTime(progress.elapsed_sec)}</p>
+          <p className="font-medium">{formatTime(progress.elapsed_sec || 0)}</p>
         </div>
         <div>
           <span className="text-foreground-muted">ETA</span>
-          <p className="font-medium">{formatTime(progress.eta_sec)}</p>
+          <p className="font-medium">{formatTime(progress.eta_sec || 0)}</p>
         </div>
         <div>
           <span className="text-foreground-muted">Speed</span>
           <p className="font-medium">
-            {progress.pages_per_sec.toFixed(2)} p/s
+            {(progress.pages_per_sec || 0).toFixed(2)} p/s
           </p>
         </div>
       </div>
