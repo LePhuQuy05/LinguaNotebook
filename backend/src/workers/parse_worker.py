@@ -55,68 +55,75 @@ def _progress_callback(document_id: str, info: ProgressInfo) -> None:
 
 
 def _save_content_blocks(document_id: str, markdown: str, errors: list):
-    """Parse HPD markdown into ContentBlock records and save to DB (sync)."""
+    """Parse HPD markdown into ContentBlock records and save to DB."""
     import re
-    from sqlalchemy import create_engine, select
-    from sqlalchemy.orm import Session
+    import asyncio
+    from sqlalchemy import select
+    from src.core.database import AsyncSessionLocal, Base
     from src.core.config import settings
     from src.models.document import Document, ContentBlock, BlockType, DocumentStatus
+    # Import all models so FK relationships resolve
+    from src.models.user import User  # noqa: F401
+    from src.models.knowledge_segment import KnowledgeSegment  # noqa: F401
+    from src.models.learning import Lesson, LessonItem  # noqa: F401
+    from src.models.schedule import Schedule  # noqa: F401
+    from src.models.srs import SRSCard  # noqa: F401
+    from src.models.sync import Device, SyncLog, ProgressSnapshot  # noqa: F401
 
-    # Use sync engine for Celery tasks
-    sync_url = settings.database_url.replace("+asyncpg", "").replace("postgresql+asyncpg", "postgresql")
-    engine = create_engine(sync_url)
+    async def _run():
+        async with AsyncSessionLocal() as db:
+            doc = (await db.execute(select(Document).where(Document.id == document_id))).scalar_one_or_none()
+            if not doc:
+                return
 
-    with Session(engine) as db:
-        doc = db.execute(select(Document).where(Document.id == document_id)).scalar_one_or_none()
-        if not doc:
-            engine.dispose()
-            return
+            pages = re.split(r'--- Page \d+ ---', markdown)
+            blocks_saved = 0
 
-        pages = re.split(r'--- Page \d+ ---', markdown)
-        blocks_saved = 0
+            for page_idx, page_content in enumerate(pages):
+                if not page_content.strip():
+                    continue
+                page_num = page_idx + 1
 
-        for page_idx, page_content in enumerate(pages):
-            if not page_content.strip():
-                continue
-            page_num = page_idx + 1
-
-            block_pattern = re.compile(
-                r'<BLOCK>(header|paragraph|table|list|image_caption)\s*\[(\d+),(\d+),(\d+),(\d+)\](.*?)</BLOCK>',
-                re.DOTALL,
-            )
-            matches = block_pattern.findall(page_content)
-
-            if not matches:
-                block = ContentBlock(
-                    document_id=document_id, page_number=page_num,
-                    block_type=BlockType.paragraph,
-                    content_markdown=page_content.strip(),
-                    bbox=None, language=doc.language or "unknown",
+                block_pattern = re.compile(
+                    r'<BLOCK>(header|paragraph|table|list|image_caption)\s*\[(\d+),(\d+),(\d+),(\d+)\](.*?)</BLOCK>',
+                    re.DOTALL,
                 )
-                db.add(block)
-                blocks_saved += 1
-                continue
+                matches = block_pattern.findall(page_content)
 
-            for btype, x1, y1, x2, y2, content in matches:
-                try:
-                    block_type = BlockType(btype)
-                except ValueError:
-                    block_type = BlockType.paragraph
+                if not matches:
+                    db.add(ContentBlock(
+                        document_id=document_id, page_number=page_num,
+                        block_type=BlockType.paragraph,
+                        content_markdown=page_content.strip(),
+                        bbox=None, language=doc.language or "unknown",
+                    ))
+                    blocks_saved += 1
+                    continue
 
-                db.add(ContentBlock(
-                    document_id=document_id, page_number=page_num,
-                    block_type=block_type, content_markdown=content.strip(),
-                    bbox=[int(x1), int(y1), int(x2), int(y2)],
-                    language=doc.language or "unknown",
-                ))
-                blocks_saved += 1
+                for btype, x1, y1, x2, y2, content in matches:
+                    try:
+                        block_type = BlockType(btype)
+                    except ValueError:
+                        block_type = BlockType.paragraph
+                    db.add(ContentBlock(
+                        document_id=document_id, page_number=page_num,
+                        block_type=block_type, content_markdown=content.strip(),
+                        bbox=[int(x1), int(y1), int(x2), int(y2)],
+                        language=doc.language or "unknown",
+                    ))
+                    blocks_saved += 1
 
-        doc.status = DocumentStatus.completed_with_errors if errors else DocumentStatus.completed
-        doc.total_pages = pages[0].strip() and len(pages) or 0
-        doc.parsed_content_path = f"parsed/{document_id}/combined.md"
-        db.commit()
-        logger.info(f"Saved {blocks_saved} ContentBlocks for document {document_id}")
-        engine.dispose()
+            doc.status = DocumentStatus.completed_with_errors if errors else DocumentStatus.completed
+            doc.total_pages = pages[0].strip() and len(pages) or 0
+            doc.parsed_content_path = f"parsed/{document_id}/combined.md"
+            await db.commit()
+            logger.info(f"Saved {blocks_saved} ContentBlocks for document {document_id}")
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(_run())
+    finally:
+        loop.close()
 
 
 @celery_app.task(name="parse_pdf", bind=True, max_retries=3)
