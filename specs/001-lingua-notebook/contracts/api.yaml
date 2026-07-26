@@ -1,0 +1,947 @@
+openapi: "3.1.0"
+info:
+  title: LinguaNotebook API
+  version: "1.0.0"
+  description: |
+    REST API for LinguaNotebook — cross-platform language learning with
+    document parsing, RAG knowledge base, adaptive learning, and TTS.
+servers:
+  - url: /api/v1
+    description: API gateway (cloud or self-hosted)
+
+paths:
+  # ── Auth ──────────────────────────────────────────────────────────────
+  /auth/register:
+    post:
+      summary: Register new account
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, display_name]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+                display_name: { type: string, maxLength: 100 }
+      responses:
+        "201": { description: Account created, verification email sent }
+        "409": { description: Email already registered }
+
+  /auth/login:
+    post:
+      summary: Login with email/password
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token: { type: string }
+                  refresh_token: { type: string }
+                  user: { $ref: "#/components/schemas/User" }
+        "401": { description: Invalid credentials }
+
+  /auth/refresh:
+    post:
+      summary: Refresh access token
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: { type: string }
+      responses:
+        "200":
+          description: New token pair
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token: { type: string }
+                  refresh_token: { type: string }
+
+  /auth/oauth/{provider}:
+    post:
+      summary: OAuth login (Google, GitHub)
+      tags: [Auth]
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema: { type: string, enum: [google, github] }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, redirect_uri]
+              properties:
+                code: { type: string }
+                redirect_uri: { type: string }
+      responses:
+        "200":
+          description: OAuth login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token: { type: string }
+                  refresh_token: { type: string }
+                  user: { $ref: "#/components/schemas/User" }
+                  is_new_user: { type: boolean }
+
+  /auth/me:
+    get:
+      summary: Get current user
+      tags: [Auth]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /auth/me:
+    delete:
+      summary: Delete account (GDPR)
+      tags: [Auth]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "202": { description: Deletion scheduled (30-day retention) }
+
+  # ── Documents ─────────────────────────────────────────────────────────
+  /documents/upload:
+    post:
+      summary: Upload PDF for parsing
+      tags: [Documents]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+                language: { type: string, description: "ISO 639-1 hint" }
+                dpi: { type: integer, enum: [72, 100, 150, 200], default: 100 }
+      responses:
+        "201":
+          description: Upload accepted, parsing queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  document_id: { type: string, format: uuid }
+                  status: { type: string }
+                  total_pages: { type: integer, nullable: true }
+
+  /documents:
+    get:
+      summary: List user's documents
+      tags: [Documents]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: language
+          in: query
+          schema: { type: string }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: per_page
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+      responses:
+        "200":
+          description: Paginated document list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Document" }
+                  total: { type: integer }
+                  page: { type: integer }
+
+  /documents/{document_id}:
+    get:
+      summary: Get document details with parsed content
+      tags: [Documents]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: document_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: page
+          in: query
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Document with parsed blocks
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentDetail"
+        "404": { description: Not found }
+
+    patch:
+      summary: Update document metadata (language, tags)
+      tags: [Documents]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: document_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                language: { type: string }
+                tags: { type: array, items: { type: string } }
+      responses:
+        "200": { description: Updated }
+
+    delete:
+      summary: Delete document and associated data
+      tags: [Documents]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: document_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "202": { description: Deletion scheduled }
+        "409": { description: Has active SRS cards — confirm required }
+
+  /documents/{document_id}/parse/progress:
+    get:
+      summary: SSE stream — real-time parsing progress
+      tags: [Documents]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: document_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: SSE event stream
+          content:
+            text/event-stream:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  current_page: { type: integer }
+                  total_pages: { type: integer }
+                  elapsed_sec: { type: number }
+                  eta_sec: { type: number }
+                  pages_per_sec: { type: number }
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        page: { type: integer }
+                        message: { type: string }
+
+  # ── RAG ───────────────────────────────────────────────────────────────
+  /rag/search:
+    get:
+      summary: Hybrid search across knowledge base
+      tags: [RAG]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string }
+        - name: language
+          in: query
+          schema: { type: string }
+        - name: block_type
+          in: query
+          schema: { type: string, enum: [header, paragraph, table, list] }
+        - name: difficulty
+          in: query
+          schema: { type: string, enum: [beginner, intermediate, advanced] }
+        - name: document_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 10, maximum: 50 }
+      responses:
+        "200":
+          description: Ranked search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items: { $ref: "#/components/schemas/SearchResult" }
+                  took_ms: { type: number }
+
+  /rag/chunks/{chunk_id}:
+    get:
+      summary: Get a specific knowledge segment with context
+      tags: [RAG]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: chunk_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Knowledge segment with surrounding context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResult"
+
+  /rag/stats:
+    get:
+      summary: Knowledge base statistics
+      tags: [RAG]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: KB stats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_chunks: { type: integer }
+                  total_documents: { type: integer }
+                  languages:
+                    type: object
+                    additionalProperties: { type: integer }
+
+  # ── Learning ──────────────────────────────────────────────────────────
+  /schedules:
+    get:
+      summary: List user's schedules
+      tags: [Learning]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Schedule list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Schedule" }
+
+    post:
+      summary: Create a study schedule
+      tags: [Learning]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScheduleCreate"
+      responses:
+        "201":
+          description: Schedule created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Schedule"
+
+  /schedules/{schedule_id}:
+    patch:
+      summary: Update a schedule
+      tags: [Learning]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: schedule_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScheduleCreate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Schedule"
+
+    delete:
+      summary: Delete a schedule
+      tags: [Learning]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: schedule_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Deleted }
+
+  /lessons/daily:
+    get:
+      summary: Get today's lesson (generated if not exists)
+      tags: [Learning]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: date
+          in: query
+          schema: { type: string, format: date }
+          description: Defaults to today
+      responses:
+        "200":
+          description: Today's lesson with items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lesson"
+
+  /lessons/{lesson_id}/items/{item_id}/answer:
+    post:
+      summary: Submit answer for a lesson item
+      tags: [Learning]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: lesson_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: item_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [response]
+              properties:
+                response: { type: string }
+                time_spent_seconds: { type: integer }
+                self_rating: { type: integer, minimum: 1, maximum: 5 }
+      responses:
+        "200":
+          description: Answer evaluated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  is_correct: { type: boolean }
+                  correct_answer: { type: string }
+                  explanation: { type: string, nullable: true }
+
+  /lessons/{lesson_id}/complete:
+    post:
+      summary: Mark lesson as complete
+      tags: [Learning]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: lesson_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Lesson completed, SRS updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  score: { type: number }
+                  words_learned: { type: integer }
+                  streak_days: { type: integer }
+
+  /lessons/history:
+    get:
+      summary: Lesson history
+      tags: [Learning]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: from_date
+          in: query
+          schema: { type: string, format: date }
+        - name: to_date
+          in: query
+          schema: { type: string, format: date }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 30 }
+      responses:
+        "200":
+          description: Lesson history list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Lesson" }
+
+  # ── TTS ───────────────────────────────────────────────────────────────
+  /tts/synthesize:
+    post:
+      summary: Generate or retrieve cached TTS audio
+      tags: [TTS]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text, language]
+              properties:
+                text: { type: string, maxLength: 5000 }
+                language: { type: string }
+                voice: { type: string, default: "default" }
+                speed: { type: number, minimum: 0.5, maximum: 2.0, default: 1.0 }
+      responses:
+        "200":
+          description: Audio file URL (cached or newly generated)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  audio_url: { type: string, format: uri }
+                  duration_seconds: { type: number }
+                  cached: { type: boolean }
+                  engine: { type: string, enum: [edge_tts, piper_tts] }
+
+  /tts/voices:
+    get:
+      summary: List available voices for a language
+      tags: [TTS]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: language
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Available voices
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: string }
+                    name: { type: string }
+                    gender: { type: string }
+                    engine: { type: string }
+
+  /tts/audio/{hash}:
+    get:
+      summary: Stream cached audio file
+      tags: [TTS]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: hash
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Audio stream
+          content:
+            audio/mpeg: {}
+            audio/wav: {}
+        "404": { description: Audio not found in cache }
+
+  # ── Progress ──────────────────────────────────────────────────────────
+  /progress/dashboard:
+    get:
+      summary: Dashboard data
+      tags: [Progress]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: days
+          in: query
+          schema: { type: integer, default: 30 }
+      responses:
+        "200":
+          description: Dashboard aggregate data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  current_streak: { type: integer }
+                  longest_streak: { type: integer }
+                  total_words_learned: { type: integer }
+                  total_study_minutes: { type: integer }
+                  daily_snapshots:
+                    type: array
+                    items: { $ref: "#/components/schemas/ProgressSnapshot" }
+                  accuracy_by_type:
+                    type: object
+                    properties:
+                      vocabulary: { type: number }
+                      reading: { type: number }
+                      grammar: { type: number }
+                      listening: { type: number }
+
+  /progress/export-report:
+    post:
+      summary: Generate PDF learning report
+      tags: [Progress]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                from_date: { type: string, format: date }
+                to_date: { type: string, format: date }
+      responses:
+        "200":
+          description: PDF report download URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  report_url: { type: string, format: uri }
+
+  # ── Sync ──────────────────────────────────────────────────────────────
+  /sync/push:
+    post:
+      summary: Push offline changes to server
+      tags: [Sync]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [device_id, changes]
+              properties:
+                device_id: { type: string, format: uuid }
+                changes:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      entity_type: { type: string }
+                      entity_id: { type: string, format: uuid }
+                      action: { type: string, enum: [created, updated, deleted] }
+                      data: { type: object }
+                      client_timestamp: { type: string, format: date-time }
+                      payload_hash: { type: string }
+      responses:
+        "200":
+          description: Sync result with conflicts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accepted: { type: integer }
+                  conflicts:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        entity_id: { type: string }
+                        resolution: { type: string }
+                        server_version: { type: object }
+
+  /sync/pull:
+    get:
+      summary: Pull changes since last sync
+      tags: [Sync]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: device_id
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - name: since
+          in: query
+          required: true
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Changes since timestamp
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  changes:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        entity_type: { type: string }
+                        entity_id: { type: string, format: uuid }
+                        action: { type: string }
+                        data: { type: object }
+                        server_timestamp: { type: string, format: date-time }
+                  server_time: { type: string, format: date-time }
+
+  # ── Donations (Cloud Only, Optional) ──────────────────────────────────
+  /donations/support:
+    get:
+      summary: Get donation/support links
+      tags: [Donations]
+      responses:
+        "200":
+          description: External donation platform links
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  platforms:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string }
+                        url: { type: string, format: uri }
+                        description: { type: string }
+
+  /donations:
+    get:
+      summary: List community donations (transparency)
+      tags: [Donations]
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          description: Recent donations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  donations:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Donation"
+                  total_count: { type: integer }
+                  total_amount_display: { type: string }
+
+  # ── Health ────────────────────────────────────────────────────────────
+  /health:
+    get:
+      summary: Basic health check
+      tags: [System]
+      responses:
+        "200":
+          description: Service alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  version: { type: string }
+
+  /health/ready:
+    get:
+      summary: Readiness check (DB + Redis + Qdrant + GPU)
+      tags: [System]
+      responses:
+        "200":
+          description: All dependencies healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  postgres: { type: string }
+                  redis: { type: string }
+                  qdrant: { type: string }
+                  gpu_available: { type: boolean }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string }
+        display_name: { type: string }
+        role: { type: string, enum: [learner, team_admin, instance_admin] }
+        avatar_url: { type: string, nullable: true }
+        tier: { type: string, enum: [free, pro, team] }
+        created_at: { type: string, format: date-time }
+
+    Document:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        filename: { type: string }
+        file_size_bytes: { type: integer }
+        total_pages: { type: integer, nullable: true }
+        language: { type: string, nullable: true }
+        status: { type: string }
+        created_at: { type: string, format: date-time }
+
+    DocumentDetail:
+      allOf:
+        - $ref: "#/components/schemas/Document"
+        - type: object
+          properties:
+            blocks:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  page_number: { type: integer }
+                  block_type: { type: string }
+                  content_markdown: { type: string }
+                  bbox: { type: array, items: { type: integer } }
+
+    SearchResult:
+      type: object
+      properties:
+        chunk_id: { type: string, format: uuid }
+        content: { type: string }
+        document_id: { type: string, format: uuid }
+        document_filename: { type: string }
+        page_numbers: { type: array, items: { type: integer } }
+        block_type: { type: string }
+        language: { type: string }
+        difficulty: { type: string }
+        score: { type: number }
+        highlight_spans:
+          type: array
+          items:
+            type: object
+            properties:
+              start: { type: integer }
+              end: { type: integer }
+
+    ScheduleCreate:
+      type: object
+      required: [name, days_of_week, time_of_day, duration_minutes]
+      properties:
+        name: { type: string, maxLength: 200 }
+        days_of_week:
+          type: array
+          items: { type: integer, minimum: 1, maximum: 7 }
+        time_of_day: { type: string, pattern: "^\\d{2}:\\d{2}$" }
+        duration_minutes: { type: integer, minimum: 5, maximum: 120 }
+        content_types:
+          type: array
+          items: { type: string, enum: [vocabulary, reading, grammar, listening] }
+        daily_item_count: { type: integer, minimum: 5, maximum: 50 }
+
+    Schedule:
+      allOf:
+        - $ref: "#/components/schemas/ScheduleCreate"
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            is_active: { type: boolean }
+            created_at: { type: string, format: date-time }
+
+    Lesson:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        date: { type: string, format: date }
+        status: { type: string }
+        score: { type: number, nullable: true }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              item_type: { type: string }
+              order_index: { type: integer }
+              question: { type: string }
+              completed: { type: boolean }
+              is_correct: { type: boolean, nullable: true }
+              audio_url: { type: string, nullable: true }
+
+    ProgressSnapshot:
+      type: object
+      properties:
+        date: { type: string, format: date }
+        words_learned: { type: integer }
+        study_minutes: { type: integer }
+        streak_days: { type: integer }
+        accuracy_vocabulary: { type: number, nullable: true }
+        accuracy_reading: { type: number, nullable: true }
+        accuracy_grammar: { type: number, nullable: true }
+        accuracy_listening: { type: number, nullable: true }
+
+    Donation:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        platform: { type: string }
+        amount_cents: { type: integer, nullable: true }
+        currency: { type: string, nullable: true }
+        is_anonymous: { type: boolean }
+        donated_at: { type: string, format: date-time }

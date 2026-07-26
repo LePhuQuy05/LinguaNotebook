@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+*.egg
+
+# Node
+node_modules/
+.next/
+out/
+.pnpm-store/
+
+# Mobile
+.expo/
+ios/Pods/
+android/.gradle/
+android/app/build/
+
+# Docker
+docker/data/
+docker/volumes/
+
+# Environment
+.env
+.env.local
+.env*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Spec-kit
+.specify/feature.json
+
+# Model files (too large for git)
+backend/model/
+*.safetensors
+*.bin
+*.pth
+*.onnx
+*.gguf
+
+# Audio cache
+audio_cache/
+*.mp3
+*.wav
