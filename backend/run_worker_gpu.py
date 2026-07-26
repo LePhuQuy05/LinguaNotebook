@@ -17,7 +17,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
 # Override DATABASE_URL and REDIS_URL to connect to Docker services on localhost
-os.environ.setdefault("DATABASE_URL", "postgresql://linguanotebook:linguanotebook@localhost:5432/linguanotebook")
+os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://linguanotebook:linguanotebook@localhost:5432/linguanotebook")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("QDRANT_URL", "http://localhost:6333")
 os.environ.setdefault("GPU_ENABLED", "true")

@@ -12,7 +12,7 @@ echo.
 echo Step 2: Install Python dependencies...
 C:\Users\ASUS\AppData\Local\Programs\Python\Python312\python.exe -m pip install "transformers>=4.46,<5" accelerate einops timm sentencepiece safetensors
 C:\Users\ASUS\AppData\Local\Programs\Python\Python312\python.exe -m pip install celery redis sqlalchemy pydantic pydantic-settings pymupdf pillow
-C:\Users\ASUS\AppData\Local\Programs\Python\Python312\python.exe -m pip install python-jose passlib "bcrypt==4.0.1" structlog boto3 httpx asyncpg
+C:\Users\ASUS\AppData\Local\Programs\Python\Python312\python.exe -m pip install python-jose passlib "bcrypt==4.0.1" structlog boto3 httpx asyncpg psycopg2-binary
 
 echo.
 echo ============================================
