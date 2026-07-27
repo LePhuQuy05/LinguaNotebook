@@ -32,6 +32,12 @@ def _get_parser() -> HPDFParser:
     return _parser
 
 
+def _is_cancelled(document_id: str) -> bool:
+    """Check if a cancel flag has been set for this document."""
+    from src.core.redis import sync_redis_client
+    return sync_redis_client.exists(f"parse:cancel:{document_id}") > 0
+
+
 def _progress_callback(document_id: str, info: ProgressInfo) -> None:
     """Emit parsing progress to Redis for SSE streaming (sync)."""
     import json
@@ -147,11 +153,12 @@ def parse_pdf_task(self, document_id: str, object_key: str, dpi: int = 100) -> d
             tmp.write(pdf_bytes)
             tmp_path = tmp.name
 
-        # Parse the PDF
+        # Parse the PDF (with cancel check between pages)
         combined_markdown, errors = parser.parse_pdf(
             pdf_path=tmp_path,
             dpi=dpi,
             progress_callback=lambda info: _progress_callback(document_id, info),
+            cancel_check=lambda: _is_cancelled(document_id),
         )
 
         # Clean up temp file

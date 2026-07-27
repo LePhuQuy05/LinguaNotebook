@@ -157,6 +157,7 @@ class HPDFParser:
         dpi: int = 100,
         max_tokens: int = 4096,
         progress_callback: Optional[Callable[[ProgressInfo], None]] = None,
+        cancel_check: Optional[Callable[[], bool]] = None,
     ) -> tuple[str, list[tuple[int, str]]]:
         """Parse a full PDF. Returns (combined_markdown, errors).
 
@@ -174,6 +175,9 @@ class HPDFParser:
         t_start = time.time()
 
         for idx in range(start, end):
+            if cancel_check and cancel_check():
+                logger.info("Parse cancelled by user")
+                break
             page_num = idx + 1
             try:
                 page = doc.load_page(idx)

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 interface ParseProgressProps {
   documentId: string;
   onComplete?: () => void;
+  onCancel?: () => void;
 }
 
 interface ProgressData {
@@ -17,7 +18,14 @@ interface ProgressData {
   errors?: Array<{ page: number; message: string }>;
 }
 
-export function ParseProgress({ documentId, onComplete }: ParseProgressProps) {
+export function ParseProgress({ documentId, onComplete, onCancel }: ParseProgressProps) {
+  const [cancelling, setCancelling] = useState(false);
+
+  const handleCancel = async () => {
+    setCancelling(true);
+    await fetch(`/api/v1/documents/${documentId}/parse/cancel`, { method: "POST" });
+    onCancel?.();
+  };
   const [progress, setProgress] = useState<ProgressData | null>(null);
 
   useEffect(() => {
@@ -108,6 +116,17 @@ export function ParseProgress({ documentId, onComplete }: ParseProgressProps) {
           </p>
         </div>
       </div>
+
+      {/* Cancel button */}
+      {progress.status === "running" && (
+        <button
+          onClick={handleCancel}
+          disabled={cancelling}
+          className="w-full rounded-lg border border-red-200 bg-red-50 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-100 disabled:opacity-50"
+        >
+          {cancelling ? "Cancelling..." : "Cancel Parsing"}
+        </button>
+      )}
 
       {/* Errors */}
       {progress.errors && progress.errors.length > 0 && (

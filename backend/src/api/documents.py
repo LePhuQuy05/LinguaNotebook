@@ -206,3 +206,12 @@ async def parse_progress_poll(
         return {"status": "waiting", "current_page": 0, "total_pages": 0}
 
     return progress
+
+
+@router.post("/{document_id}/parse/cancel")
+async def cancel_parse(document_id: str):
+    """Cancel a running parse job."""
+    from src.core.redis import sync_redis_client as redis
+    redis.setex(f"parse:cancel:{document_id}", 3600, "1")
+    redis.setex(f"parse:progress:{document_id}", 3600, '{"status":"cancelled"}')
+    return {"status": "cancelled", "document_id": document_id}
