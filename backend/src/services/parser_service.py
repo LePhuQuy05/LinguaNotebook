@@ -122,13 +122,62 @@ async def update_document(
 
 
 async def delete_document(db: AsyncSession, document_id: str, user_id: str) -> bool:
-    """Delete a document and its parsed content."""
+    """Delete a document, its parsed content, and all related Celery tasks."""
     doc = await get_document(db, document_id, user_id)
     if doc is None:
         return False
+
+    # Purge Celery tasks and Redis keys BEFORE deleting the DB record
+    purged = await _purge_document_tasks(document_id)
+    if purged > 0:
+        logger.info(f"Purged {purged} Celery task(s) for document {document_id}")
+
     await db.delete(doc)
     await db.commit()
     return True
+
+
+async def _purge_document_tasks(document_id: str) -> int:
+    """Remove all Celery queue entries and Redis keys for a document.
+
+    Scans the Celery task queue for tasks whose args contain the document ID,
+    removes them, and cleans up parse:progress and parse:cancel keys.
+
+    Returns the number of Celery tasks purged.
+    """
+    import asyncio
+
+    def _sync_purge() -> int:
+        from src.core.redis import sync_redis_client
+        purged = 0
+
+        # 1. Scan Celery queue for tasks matching this document
+        try:
+            queue_len = sync_redis_client.llen("celery")
+            if queue_len > 0:
+                tasks = sync_redis_client.lrange("celery", 0, -1)
+                for task_data in tasks:
+                    try:
+                        if document_id in task_data:
+                            sync_redis_client.lrem("celery", 0, task_data)
+                            # Also remove task metadata
+                            task = json.loads(task_data)
+                            task_id = task.get("headers", {}).get("id", "")
+                            if task_id:
+                                sync_redis_client.delete(f"celery-task-meta-{task_id}")
+                            purged += 1
+                    except (json.JSONDecodeError, TypeError, KeyError):
+                        pass
+        except Exception as e:
+            logger.warning(f"Failed to scan Celery queue: {e}")
+
+        # 2. Clean up parse progress and cancel keys
+        sync_redis_client.delete(f"{REDIS_PROGRESS_PREFIX}{document_id}")
+        sync_redis_client.delete(f"parse:cancel:{document_id}")
+
+        return purged
+
+    return await asyncio.to_thread(_sync_purge)
 
 
 async def get_parse_progress(document_id: str) -> dict:
