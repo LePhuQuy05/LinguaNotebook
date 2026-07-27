@@ -11,6 +11,9 @@ export function DocumentUploader({ onUploadComplete }: DocumentUploaderProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pageStart, setPageStart] = useState(1);
+  const [pageEnd, setPageEnd] = useState("");
+  const [dpi, setDpi] = useState(100);
 
   const handleUpload = useCallback(
     async (file: File) => {
@@ -30,7 +33,13 @@ export function DocumentUploader({ onUploadComplete }: DocumentUploaderProps) {
         const formData = new FormData();
         formData.append("file", file);
 
-        const res = await fetch("/api/v1/documents/upload", {
+        const params = new URLSearchParams({
+          dpi: String(dpi),
+          page_start: String(pageStart),
+        });
+        if (pageEnd) params.set("page_end", pageEnd);
+
+        const res = await fetch(`/api/v1/documents/upload?${params}`, {
           method: "POST",
           body: formData,
           headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
@@ -77,6 +86,39 @@ export function DocumentUploader({ onUploadComplete }: DocumentUploaderProps) {
           if (file) handleUpload(file);
         }}
       />
+      {/* Page range & DPI controls */}
+      <div className="flex items-center justify-center gap-4 mb-2" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2 text-sm">
+          <label className="text-slate-500">Pages:</label>
+          <input
+            type="number" min={1} value={pageStart}
+            onChange={(e) => setPageStart(Number(e.target.value))}
+            className="w-16 rounded-md border border-slate-200 px-2 py-1 text-center text-sm"
+            placeholder="1"
+          />
+          <span className="text-slate-400">–</span>
+          <input
+            type="number" min={1} value={pageEnd}
+            onChange={(e) => setPageEnd(e.target.value)}
+            className="w-16 rounded-md border border-slate-200 px-2 py-1 text-center text-sm"
+            placeholder="end"
+          />
+        </div>
+        <div className="flex items-center gap-2 text-sm">
+          <label className="text-slate-500">DPI:</label>
+          <select
+            value={dpi}
+            onChange={(e) => setDpi(Number(e.target.value))}
+            className="rounded-md border border-slate-200 px-2 py-1 text-sm"
+          >
+            <option value={72}>72 (fast)</option>
+            <option value={100}>100 (default)</option>
+            <option value={150}>150 (dense)</option>
+            <option value={200}>200 (small text)</option>
+          </select>
+        </div>
+      </div>
+
       <div className="flex flex-col items-center gap-3">
         {uploading ? (
           <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600" />

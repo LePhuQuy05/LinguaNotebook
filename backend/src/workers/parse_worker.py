@@ -133,7 +133,8 @@ def _save_content_blocks(document_id: str, markdown: str, errors: list):
 
 
 @celery_app.task(name="parse_pdf", bind=True, max_retries=3)
-def parse_pdf_task(self, document_id: str, object_key: str, dpi: int = 100) -> dict:
+def parse_pdf_task(self, document_id: str, object_key: str, dpi: int = 100,
+                    page_start: int = 1, page_end: int = None) -> dict:
     """Parse a PDF document page by page using HPD model.
 
     Saves combined markdown to storage and updates document status in DB.
@@ -153,9 +154,11 @@ def parse_pdf_task(self, document_id: str, object_key: str, dpi: int = 100) -> d
             tmp.write(pdf_bytes)
             tmp_path = tmp.name
 
-        # Parse the PDF (with cancel check between pages)
+        # Parse the PDF (with cancel check + page range)
         combined_markdown, errors = parser.parse_pdf(
             pdf_path=tmp_path,
+            page_start=page_start,
+            page_end=page_end,
             dpi=dpi,
             progress_callback=lambda info: _progress_callback(document_id, info),
             cancel_check=lambda: _is_cancelled(document_id),

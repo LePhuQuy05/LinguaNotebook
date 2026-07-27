@@ -27,6 +27,8 @@ async def create_document(
     mime_type: str,
     language: str | None = None,
     dpi: int = 100,
+    page_start: int = 1,
+    page_end: int | None = None,
 ) -> Document:
     """Create a Document record and queue it for parsing."""
     # Validate file size
@@ -56,9 +58,9 @@ async def create_document(
     await db.commit()
     await db.refresh(document)
 
-    # Dispatch Celery task
+    # Dispatch Celery task with page range
     from src.workers.parse_worker import parse_pdf_task
-    parse_pdf_task.delay(doc_id, object_key, dpi)
+    parse_pdf_task.delay(doc_id, object_key, dpi, page_start, page_end)
 
     logger.info(f"Document {doc_id} queued for parsing: {filename}")
     return document

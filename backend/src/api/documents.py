@@ -24,10 +24,12 @@ async def upload_document(
     file: UploadFile = File(...),
     language: str | None = Query(None),
     dpi: int = Query(100, ge=72, le=200),
+    page_start: int = Query(1, ge=1),
+    page_end: int | None = Query(None, ge=1),
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
-    """Upload a PDF for parsing."""
+    """Upload a PDF for parsing. Optional page range."""
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(400, "Only PDF files are supported")
 
@@ -39,8 +41,9 @@ async def upload_document(
         db=db, user_id=user_id, filename=file.filename,
         file_data=file_data, mime_type=file.content_type or "application/pdf",
         language=language, dpi=dpi,
+        page_start=page_start, page_end=page_end,
     )
-    return {"document_id": document.id, "status": document.status.value, "total_pages": document.total_pages}
+    return {"document_id": document.id, "status": document.status.value, "total_pages": document.total_pages, "page_range": f"{page_start}-{page_end or 'end'}"}
 
 
 @router.get("")
