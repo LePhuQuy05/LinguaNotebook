@@ -133,11 +133,15 @@ export function ParseProgress({ documentId, onComplete, onCancel }: ParseProgres
         <div className="rounded-lg bg-destructive-light p-3 text-sm text-destructive">
           <p className="font-medium">Errors on pages:</p>
           <ul className="list-inside list-disc">
-            {progress.errors.map((e, i) => (
-              <li key={i}>
-                Page {e.page}: {e.message.slice(0, 100)}
-              </li>
-            ))}
+            {progress.errors.map((e: any, i: number) => {
+              const page = typeof e === "object" ? (e.page || e[0]) : i + 1;
+              const msg = typeof e === "object" ? (e.message || e[1] || "") : String(e);
+              return (
+                <li key={i}>
+                  Page {page}: {String(msg).slice(0, 100)}
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}

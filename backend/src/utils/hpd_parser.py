@@ -147,6 +147,8 @@ class HPDFParser:
             )
 
         del pixel_values
+        if result is None:
+            raise RuntimeError("HPD model returned None — page may be blank or unsupported format")
         return result
 
     def parse_pdf(
