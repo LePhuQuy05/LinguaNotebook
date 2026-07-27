@@ -55,7 +55,7 @@ export function DocumentUploader({ onUploadComplete }: DocumentUploaderProps) {
         setUploading(false);
       }
     },
-    [onUploadComplete],
+    [onUploadComplete, dpi, pageStart, pageEnd],
   );
 
   return (
