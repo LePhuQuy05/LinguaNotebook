@@ -59,57 +59,31 @@ export function DocumentUploader({ onUploadComplete }: DocumentUploaderProps) {
   );
 
   return (
-    <div
-      className={`relative rounded-xl border-2 border-dashed p-12 text-center transition-all duration-200 ${
-        isDragging
-          ? "border-primary-400 bg-primary-50"
-          : "border-border hover:border-primary-300"
-      }`}
-      onDragOver={(e) => {
-        e.preventDefault();
-        setIsDragging(true);
-      }}
-      onDragLeave={() => setIsDragging(false)}
-      onDrop={(e) => {
-        e.preventDefault();
-        setIsDragging(false);
-        const file = e.dataTransfer.files[0];
-        if (file) handleUpload(file);
-      }}
-    >
-      <input
-        type="file"
-        accept=".pdf"
-        className="absolute inset-0 cursor-pointer opacity-0"
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) handleUpload(file);
-        }}
-      />
-      {/* Page range & DPI controls */}
-      <div className="flex items-center justify-center gap-4 mb-2" onClick={(e) => e.stopPropagation()}>
+    <div className="space-y-4">
+      {/* Page range & DPI controls — outside dropzone */}
+      <div className="flex items-center justify-center gap-4">
         <div className="flex items-center gap-2 text-sm">
-          <label className="text-slate-500">Pages:</label>
+          <label className="font-medium text-slate-600">Pages:</label>
           <input
             type="number" min={1} value={pageStart}
             onChange={(e) => setPageStart(Number(e.target.value))}
-            className="w-16 rounded-md border border-slate-200 px-2 py-1 text-center text-sm"
+            className="w-20 rounded-lg border border-slate-200 px-3 py-2 text-center text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100"
             placeholder="1"
           />
           <span className="text-slate-400">–</span>
           <input
             type="number" min={1} value={pageEnd}
             onChange={(e) => setPageEnd(e.target.value)}
-            className="w-16 rounded-md border border-slate-200 px-2 py-1 text-center text-sm"
+            className="w-20 rounded-lg border border-slate-200 px-3 py-2 text-center text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100"
             placeholder="end"
           />
         </div>
         <div className="flex items-center gap-2 text-sm">
-          <label className="text-slate-500">DPI:</label>
+          <label className="font-medium text-slate-600">DPI:</label>
           <select
             value={dpi}
             onChange={(e) => setDpi(Number(e.target.value))}
-            className="rounded-md border border-slate-200 px-2 py-1 text-sm"
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
           >
             <option value={72}>72 (fast)</option>
             <option value={100}>100 (default)</option>
@@ -119,19 +93,40 @@ export function DocumentUploader({ onUploadComplete }: DocumentUploaderProps) {
         </div>
       </div>
 
-      <div className="flex flex-col items-center gap-3">
-        {uploading ? (
-          <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600" />
-        ) : (
-          <Upload className="h-12 w-12 text-primary-400" />
-        )}
-        <div>
-          <p className="text-lg font-medium text-foreground">
-            {uploading ? "Uploading..." : "Drop your PDF here"}
-          </p>
-          <p className="text-sm text-foreground-muted">
-            or click to browse — up to 500MB
-          </p>
+      {/* Dropzone */}
+      <div
+        className={`relative rounded-xl border-2 border-dashed p-12 text-center transition-all duration-200 ${
+          isDragging
+            ? "border-primary-400 bg-primary-50"
+            : "border-slate-200 hover:border-primary-300"
+        }`}
+        onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+        onDragLeave={() => setIsDragging(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setIsDragging(false);
+          const file = e.dataTransfer.files[0];
+          if (file) handleUpload(file);
+        }}
+      >
+        <input
+          type="file"
+          accept=".pdf"
+          className="absolute inset-0 cursor-pointer opacity-0"
+          onChange={(e) => { const file = e.target.files?.[0]; if (file) handleUpload(file); }}
+        />
+        <div className="flex flex-col items-center gap-3">
+          {uploading ? (
+            <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600" />
+          ) : (
+            <Upload className="h-12 w-12 text-primary-400" />
+          )}
+          <div>
+            <p className="text-lg font-medium text-slate-700">
+              {uploading ? "Uploading..." : "Drop your PDF here"}
+            </p>
+            <p className="text-sm text-slate-400">or click to browse — up to 500MB</p>
+          </div>
         </div>
       </div>
       {error && (
