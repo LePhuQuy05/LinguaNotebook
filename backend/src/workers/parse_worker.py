@@ -60,6 +60,34 @@ def _progress_callback(document_id: str, info: ProgressInfo) -> None:
         logger.error(f"Failed to write progress to Redis: {e}")
 
 
+def _deduplicate_repeated_lines(markdown: str, threshold: int = 5) -> str:
+    """Remove HPD degeneration: consecutive repeated lines (model stuck in loop).
+
+    When speculative decoding goes wrong, HPD can repeat the same line
+    dozens or hundreds of times. This collapses runs of identical lines.
+    """
+    import re
+    lines = markdown.split('\n')
+    cleaned = []
+    prev_line = None
+    repeat_count = 0
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped and stripped == prev_line:
+            repeat_count += 1
+            if repeat_count <= threshold:
+                cleaned.append(line)
+            elif repeat_count == threshold + 1:
+                cleaned.append(f'[HPD repetition detected — {threshold}+ duplicates removed]')
+        else:
+            repeat_count = 0
+            prev_line = stripped
+            cleaned.append(line)
+
+    return '\n'.join(cleaned)
+
+
 def _save_content_blocks(document_id: str, markdown: str, errors: list):
     """Parse HPD markdown into ContentBlock records and save to DB."""
     import re
@@ -70,6 +98,10 @@ def _save_content_blocks(document_id: str, markdown: str, errors: list):
     from src.models.document import Document, ContentBlock, BlockType, DocumentStatus
     # Import all models so FK relationships resolve
     from src.models.user import User  # noqa: F401
+
+    # Detect and remove HPD degeneration (repeated text patterns)
+    # HPD speculative decoding sometimes gets stuck repeating the same sentence
+    markdown = _deduplicate_repeated_lines(markdown)
     from src.models.knowledge_segment import KnowledgeSegment  # noqa: F401
     from src.models.learning import Lesson, LessonItem  # noqa: F401
     from src.models.schedule import Schedule  # noqa: F401
