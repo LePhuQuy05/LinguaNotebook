@@ -183,6 +183,13 @@ def parse_pdf_task(self, document_id: str, object_key: str, dpi: int = 100,
         import asyncio as _asyncio
         from src.core.database import AsyncSessionLocal
         from src.models.document import Document, DocumentStatus
+        # Import ALL models so FK relationships resolve
+        from src.models.user import User  # noqa: F401
+        from src.models.knowledge_segment import KnowledgeSegment  # noqa: F401
+        from src.models.learning import Lesson, LessonItem  # noqa: F401
+        from src.models.schedule import Schedule  # noqa: F401
+        from src.models.srs import SRSCard  # noqa: F401
+        from src.models.sync import Device, SyncLog, ProgressSnapshot  # noqa: F401
         _loop = _asyncio.new_event_loop()
         async def _update_status():
             from sqlalchemy import select
