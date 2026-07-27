@@ -120,7 +120,8 @@ def _save_content_blocks(document_id: str, markdown: str, errors: list):
                     blocks_saved += 1
 
             doc.status = DocumentStatus.completed_with_errors if errors else DocumentStatus.completed
-            doc.total_pages = pages[0].strip() and len(pages) or 0
+            # Count pages that have actual content (skip empty leading/trailing splits)
+            doc.total_pages = sum(1 for p in pages if p.strip())
             doc.parsed_content_path = f"parsed/{document_id}/combined.md"
             await db.commit()
             logger.info(f"Saved {blocks_saved} ContentBlocks for document {document_id}")

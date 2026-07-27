@@ -138,7 +138,11 @@ class HPDFParser:
             result = self.model.generate_hpd(
                 tokenizer=self.tokenizer,
                 pixel_values=pixel_values,
-                question="Please parse this document page image into markdown format.",
+                question="Parse this document page into structured markdown. "
+                         "Identify and label: headers, paragraphs, tables (use |--| format), "
+                         "numbered lists, image captions, page numbers, and footers. "
+                         "For tables, output as markdown tables with | col1 | col2 | format. "
+                         "Preserve the original language exactly — do not translate.",
                 generation_config=gen_config,
                 use_mtp=True,
                 num_speculative_tokens=6,
