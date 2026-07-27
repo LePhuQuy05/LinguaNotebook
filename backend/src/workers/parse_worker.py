@@ -197,11 +197,10 @@ def parse_pdf_task(self, document_id: str, object_key: str, dpi: int = 100,
         result_key = f"parsed/{document_id}/combined.md"
         upload_file(combined_markdown.encode("utf-8"), result_key, "text/markdown")
 
-        # Parse markdown into ContentBlock records and save to DB (sync)
+        # Calculate page count from markdown
         total_pages = len(combined_markdown.split("--- Page")) - 1
-        _save_content_blocks(document_id, combined_markdown, errors)
 
-        # Signal completion via sync Redis
+        # Signal completion via sync Redis FIRST (before slow DB operations)
         import json
         from src.core.redis import sync_redis_client
         sync_redis_client.setex(
@@ -213,6 +212,22 @@ def parse_pdf_task(self, document_id: str, object_key: str, dpi: int = 100,
                 "errors": errors,
             }, default=str),
         )
+
+        # Parse markdown into ContentBlock records and save to DB
+        # (can take a while on large documents — frontend already shows "completed")
+        try:
+            _save_content_blocks(document_id, combined_markdown, errors)
+        except Exception as save_err:
+            logger.error(f"Failed to save content blocks for {document_id}: {save_err}")
+            sync_redis_client.setex(
+                f"parse:progress:{document_id}", 3600,
+                json.dumps({
+                    "status": "completed_with_errors",
+                    "result_key": result_key,
+                    "total_pages": total_pages,
+                    "errors": errors + [f"DB save failed: {save_err}"],
+                }, default=str),
+            )
 
         logger.info(f"Document {document_id} parsed successfully")
         return {"status": "completed", "document_id": document_id, "errors": len(errors)}
