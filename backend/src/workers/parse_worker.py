@@ -179,28 +179,6 @@ def parse_pdf_task(self, document_id: str, object_key: str, dpi: int = 100,
             }),
         )
 
-        # Update document status to "parsing" so frontend reflects it
-        import asyncio as _asyncio
-        from src.core.database import AsyncSessionLocal
-        from src.models.document import Document, DocumentStatus
-        # Import ALL models so FK relationships resolve
-        from src.models.user import User  # noqa: F401
-        from src.models.knowledge_segment import KnowledgeSegment  # noqa: F401
-        from src.models.learning import Lesson, LessonItem  # noqa: F401
-        from src.models.schedule import Schedule  # noqa: F401
-        from src.models.srs import SRSCard  # noqa: F401
-        from src.models.sync import Device, SyncLog, ProgressSnapshot  # noqa: F401
-        _loop = _asyncio.new_event_loop()
-        async def _update_status():
-            from sqlalchemy import select
-            async with AsyncSessionLocal() as _db:
-                _d = (await _db.execute(select(Document).where(Document.id == document_id))).scalar_one_or_none()
-                if _d:
-                    _d.status = DocumentStatus.parsing
-                    await _db.commit()
-        _loop.run_until_complete(_update_status())
-        _loop.close()
-
         # Parse the PDF (with cancel check + page range)
         combined_markdown, errors = parser.parse_pdf(
             pdf_path=tmp_path,
