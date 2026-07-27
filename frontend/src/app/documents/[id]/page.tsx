@@ -92,9 +92,17 @@ export default function DocumentViewerPage() {
         </div>
       </div>
 
-      {/* Show parse progress for queued/parsing docs */}
+      {/* Show parse progress for queued/parsing docs (not for completed/failed/cancelled) */}
       {(doc.status === "queued" || doc.status === "parsing" || doc.status === "uploading") && (
         <ParseProgress documentId={id} onComplete={() => window.location.reload()} />
+      )}
+
+      {/* Cancelled state */}
+      {doc.status === "failed" && doc.error_message === "Cancelled by user" && (
+        <div className="py-16 text-center">
+          <p className="text-slate-500">Parsing was cancelled.</p>
+          <p className="mt-2 text-sm text-slate-400">Re-upload the document to try again.</p>
+        </div>
       )}
 
       {/* Parse complete with no blocks */}

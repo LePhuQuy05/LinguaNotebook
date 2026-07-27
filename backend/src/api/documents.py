@@ -213,8 +213,21 @@ async def parse_progress_poll(
 
 @router.post("/{document_id}/parse/cancel")
 async def cancel_parse(document_id: str):
-    """Cancel a running parse job."""
+    """Cancel a running parse job and update document status."""
     from src.core.redis import sync_redis_client as redis
+    from src.core.database import AsyncSessionLocal
+    from sqlalchemy import select, update
+    from src.models.document import Document, DocumentStatus
+
     redis.setex(f"parse:cancel:{document_id}", 3600, "1")
-    redis.setex(f"parse:progress:{document_id}", 3600, '{"status":"cancelled"}')
+    redis.setex(f"parse:progress:{document_id}", 3600, '{"status":"cancelled","current_page":0,"total_pages":0}')
+
+    # Update document status in DB
+    async with AsyncSessionLocal() as db:
+        doc = (await db.execute(select(Document).where(Document.id == document_id))).scalar_one_or_none()
+        if doc:
+            doc.status = DocumentStatus.failed
+            doc.error_message = "Cancelled by user"
+            await db.commit()
+
     return {"status": "cancelled", "document_id": document_id}

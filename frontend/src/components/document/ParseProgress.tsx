@@ -41,7 +41,7 @@ export function ParseProgress({ documentId, onComplete, onCancel }: ParseProgres
         const data: ProgressData = await res.json();
         setProgress(data);
 
-        if (data.status === "completed" || data.status === "completed_with_errors") {
+        if (data.status === "completed" || data.status === "completed_with_errors" || data.status === "cancelled") {
           onComplete?.();
           return;
         }
