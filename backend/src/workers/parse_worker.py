@@ -154,6 +154,46 @@ def parse_pdf_task(self, document_id: str, object_key: str, dpi: int = 100,
             tmp.write(pdf_bytes)
             tmp_path = tmp.name
 
+        # Get total page count for progress tracking
+        import fitz
+        pdf_doc = fitz.open(tmp_path)
+        total_pages = pdf_doc.page_count
+        start = max(1, page_start) - 1
+        end = min(page_end or total_pages, total_pages)
+        to_process = end - start
+        pdf_doc.close()
+
+        # Write INITIAL progress so frontend knows worker picked up the task
+        from src.core.redis import sync_redis_client
+        import json as _json
+        sync_redis_client.setex(
+            f"parse:progress:{document_id}", 3600,
+            _json.dumps({
+                "status": "running",
+                "current_page": 0,
+                "total_pages": to_process,
+                "elapsed_sec": 0,
+                "eta_sec": 0,
+                "pages_per_sec": 0,
+                "errors": [],
+            }),
+        )
+
+        # Update document status to "parsing" so frontend reflects it
+        import asyncio as _asyncio
+        from src.core.database import AsyncSessionLocal
+        from src.models.document import Document, DocumentStatus
+        _loop = _asyncio.new_event_loop()
+        async def _update_status():
+            from sqlalchemy import select
+            async with AsyncSessionLocal() as _db:
+                _d = (await _db.execute(select(Document).where(Document.id == document_id))).scalar_one_or_none()
+                if _d:
+                    _d.status = DocumentStatus.parsing
+                    await _db.commit()
+        _loop.run_until_complete(_update_status())
+        _loop.close()
+
         # Parse the PDF (with cancel check + page range)
         combined_markdown, errors = parser.parse_pdf(
             pdf_path=tmp_path,
