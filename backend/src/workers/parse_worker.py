@@ -83,7 +83,7 @@ def _deduplicate_repeated_lines(markdown: str, threshold: int = 5) -> str:
     return '\n'.join(cleaned)
 
 
-def _save_content_blocks(document_id: str, markdown: str, errors: list):
+def _save_content_blocks(document_id: str, markdown: str, errors: list, method: str = ""):
     """Parse markdown into ContentBlock records and save to DB."""
     import re
     import asyncio
@@ -145,6 +145,7 @@ def _save_content_blocks(document_id: str, markdown: str, errors: list):
 
             doc.status = DocumentStatus.completed_with_errors if errors else DocumentStatus.completed
             doc.total_pages = sum(1 for p in pages if p.strip())
+            doc.parse_method = method
             doc.parsed_content_path = f"parsed/{document_id}/combined.md"
             await db.commit()
             logger.info(f"Saved {blocks_saved} ContentBlocks for document {document_id}")
@@ -228,7 +229,7 @@ def parse_pdf_task(self, document_id: str, object_key: str, dpi: int = 100,
 
         # Save ContentBlocks to DB (can be slow, frontend already shows completed)
         try:
-            _save_content_blocks(document_id, combined_markdown, errors)
+            _save_content_blocks(document_id, combined_markdown, errors, method)
         except Exception as save_err:
             logger.error(f"Failed to save content blocks for {document_id}: {save_err}")
             sync_redis_client.setex(

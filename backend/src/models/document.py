@@ -43,6 +43,7 @@ class Document(Base):
         Enum(DocumentStatus), nullable=False, default=DocumentStatus.uploading
     )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    parse_method: Mapped[str | None] = mapped_column(String(50), nullable=True)
     parsed_content_path: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)

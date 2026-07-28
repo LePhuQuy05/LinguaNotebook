@@ -73,7 +73,8 @@ async def list_documents(
     return {
         "items": [{"id": d.id, "filename": d.filename, "file_size_bytes": d.file_size_bytes,
                     "total_pages": d.total_pages, "language": d.language,
-                    "status": d.status.value, "created_at": d.created_at.isoformat()} for d in docs],
+                    "status": d.status.value, "parse_method": d.parse_method,
+                    "created_at": d.created_at.isoformat()} for d in docs],
         "total": total, "page": page,
     }
 
@@ -103,7 +104,8 @@ async def get_document(
     return {
         "id": doc.id, "filename": doc.filename, "file_size_bytes": doc.file_size_bytes,
         "total_pages": doc.total_pages, "language": doc.language,
-        "status": doc.status.value, "error_message": doc.error_message,
+        "status": doc.status.value, "parse_method": doc.parse_method,
+        "error_message": doc.error_message,
         "created_at": doc.created_at.isoformat(),
         "blocks": [{"id": b.id, "page_number": b.page_number, "block_type": b.block_type.value,
                      "content_markdown": b.content_markdown, "bbox": b.bbox} for b in blocks],

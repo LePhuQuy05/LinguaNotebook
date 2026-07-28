@@ -88,6 +88,7 @@ export default function DocumentViewerPage() {
           <p className="text-sm text-foreground-muted">
             {doc.total_pages ? `${doc.total_pages} pages` : "Parsing..."}
             {doc.language ? ` · ${doc.language}` : ""}
+            {doc.parse_method ? ` · ${doc.parse_method === "text_layer" ? "📄 Text extraction" : "🔍 OCR"}` : ""}
           </p>
         </div>
       </div>
