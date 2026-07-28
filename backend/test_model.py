@@ -65,8 +65,9 @@ try:
             generation_config={
                 "max_new_tokens": 512, "do_sample": False,
                 "num_beams": 1, "pad_token_id": tokenizer.pad_token_id,
+                "repetition_penalty": 1.15, "no_repeat_ngram_size": 10,
             },
-            use_mtp=True, num_speculative_tokens=6,
+            use_mtp=False,
             num_patches_list=[num_tiles], verbose=True,
         )
     elapsed = time.time() - t0

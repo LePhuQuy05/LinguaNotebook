@@ -116,7 +116,7 @@ class HPDFParser:
         tiles = dynamic_preprocess(pil_image, target_ratios, IMAGE_SIZE, USE_THUMBNAIL)
         return torch.stack([transform(t) for t in tiles])
 
-    def parse_page(self, pil_image: Image.Image, page_num: int, max_tokens: int = 4096) -> str:
+    def parse_page(self, pil_image: Image.Image, page_num: int, max_tokens: int = 2048) -> str:
         """Parse a single page image. Returns markdown text."""
         if not self._loaded:
             raise RuntimeError("Model not loaded. Call load_model() first.")
@@ -132,6 +132,8 @@ class HPDFParser:
             do_sample=False,
             num_beams=1,
             pad_token_id=self.tokenizer.pad_token_id,
+            repetition_penalty=1.15,
+            no_repeat_ngram_size=10,
         )
 
         with torch.no_grad():
@@ -144,8 +146,7 @@ class HPDFParser:
                          "For tables, output as markdown tables with | col1 | col2 | format. "
                          "Preserve the original language exactly — do not translate.",
                 generation_config=gen_config,
-                use_mtp=True,
-                num_speculative_tokens=6,
+                use_mtp=False,
                 num_patches_list=[num_tiles],
                 verbose=False,
             )
