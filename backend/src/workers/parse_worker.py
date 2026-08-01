@@ -1,4 +1,4 @@
-"""Celery worker for PDF parsing with hybrid parser.
+"""Celery worker for PDF parsing.
 
 Auto-detects PDF text layer: PyMuPDF for text-based PDFs, HPD OCR for scanned PDFs.
 Emits progress to Redis for frontend polling.
@@ -9,27 +9,9 @@ import logging
 from src.core.config import settings
 from src.core.storage import get_storage_client, upload_file
 from src.services.parser_service import set_parse_progress
-from src.utils.hpd_parser import HPDFParser
 from src.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
-
-# HPD model loaded once per worker lifetime (for scanned PDFs)
-_parser: HPDFParser | None = None
-
-
-def _get_parser() -> HPDFParser:
-    """Lazy-load HPD parser. Called only for image-based PDFs."""
-    global _parser
-    if _parser is None:
-        gpu_type = getattr(settings, 'gpu_type', 'cuda')
-        _parser = HPDFParser(
-            model_dir=settings.hpd_model_path,
-            use_gpu=settings.gpu_enabled,
-            gpu_type=gpu_type,
-        )
-        _parser.load_model()
-    return _parser
 
 
 def _is_cancelled(document_id: str) -> bool:
@@ -188,7 +170,7 @@ def parse_pdf_task(self, document_id: str, object_key: str, dpi: int = 100,
             }),
         )
 
-        # HYBRID: auto-detect and use best parser
+        # Auto-detect: text layer → PyMuPDF, else HPD OCR
         from src.services.pdf_parser import parse_pdf_hybrid
         combined_markdown, errors, method = parse_pdf_hybrid(
             pdf_path=tmp_path,

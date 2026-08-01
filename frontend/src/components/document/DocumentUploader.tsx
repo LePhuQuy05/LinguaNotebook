@@ -14,7 +14,6 @@ export function DocumentUploader({ onUploadComplete }: DocumentUploaderProps) {
   const [pageStart, setPageStart] = useState(1);
   const [pageEnd, setPageEnd] = useState("");
   const [dpi, setDpi] = useState(100);
-  const [mode, setMode] = useState("fast");
 
   const handleUpload = useCallback(
     async (file: File) => {
@@ -37,7 +36,6 @@ export function DocumentUploader({ onUploadComplete }: DocumentUploaderProps) {
         const params = new URLSearchParams({
           dpi: String(dpi),
           page_start: String(pageStart),
-          mode: mode,
         });
         if (pageEnd) params.set("page_end", pageEnd);
 
@@ -57,7 +55,7 @@ export function DocumentUploader({ onUploadComplete }: DocumentUploaderProps) {
         setUploading(false);
       }
     },
-    [onUploadComplete, dpi, pageStart, pageEnd, mode],
+    [onUploadComplete, dpi, pageStart, pageEnd],
   );
 
   return (
@@ -67,30 +65,22 @@ export function DocumentUploader({ onUploadComplete }: DocumentUploaderProps) {
         <div className="flex items-center gap-2 text-sm">
           <label className="font-medium text-slate-600">Pages:</label>
           <input
-            type="number" min={1} value={pageStart}
+            type="number"
+            min={1}
+            value={pageStart}
             onChange={(e) => setPageStart(Number(e.target.value))}
             className="w-20 rounded-lg border border-slate-200 px-3 py-2 text-center text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100"
             placeholder="1"
           />
           <span className="text-slate-400">–</span>
           <input
-            type="number" min={1} value={pageEnd}
+            type="number"
+            min={1}
+            value={pageEnd}
             onChange={(e) => setPageEnd(e.target.value)}
             className="w-20 rounded-lg border border-slate-200 px-3 py-2 text-center text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100"
             placeholder="end"
           />
-        </div>
-        <div className="flex items-center gap-2 text-sm">
-          <label className="font-medium text-slate-600">Mode:</label>
-          <select
-            value={mode}
-            onChange={(e) => setMode(e.target.value)}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
-          >
-            <option value="fast">⚡ Fast (CPU)</option>
-            <option value="balanced">🔍 Balanced (GPU)</option>
-            <option value="hybrid">🔄 Hybrid (HPD + Qwen VL)</option>
-          </select>
         </div>
         <div className="flex items-center gap-2 text-sm">
           <label className="font-medium text-slate-600">DPI:</label>
@@ -114,7 +104,10 @@ export function DocumentUploader({ onUploadComplete }: DocumentUploaderProps) {
             ? "border-primary-400 bg-primary-50"
             : "border-slate-200 hover:border-primary-300"
         }`}
-        onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setIsDragging(true);
+        }}
         onDragLeave={() => setIsDragging(false)}
         onDrop={(e) => {
           e.preventDefault();
@@ -127,7 +120,10 @@ export function DocumentUploader({ onUploadComplete }: DocumentUploaderProps) {
           type="file"
           accept=".pdf"
           className="absolute inset-0 cursor-pointer opacity-0"
-          onChange={(e) => { const file = e.target.files?.[0]; if (file) handleUpload(file); }}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handleUpload(file);
+          }}
         />
         <div className="flex flex-col items-center gap-3">
           {uploading ? (
@@ -139,13 +135,13 @@ export function DocumentUploader({ onUploadComplete }: DocumentUploaderProps) {
             <p className="text-lg font-medium text-slate-700">
               {uploading ? "Uploading..." : "Drop your PDF here"}
             </p>
-            <p className="text-sm text-slate-400">or click to browse — up to 500MB</p>
+            <p className="text-sm text-slate-400">
+              or click to browse — up to 500MB
+            </p>
           </div>
         </div>
       </div>
-      {error && (
-        <p className="mt-4 text-sm text-destructive">{error}</p>
-      )}
+      {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
     </div>
   );
 }

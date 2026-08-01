@@ -26,6 +26,7 @@ async def upload_document(
     dpi: int = Query(100, ge=72, le=200),
     page_start: int = Query(1, ge=1),
     page_end: int | None = Query(None, ge=1),
+    mode: str = Query("fast"),
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
@@ -42,6 +43,7 @@ async def upload_document(
         file_data=file_data, mime_type=file.content_type or "application/pdf",
         language=language, dpi=dpi,
         page_start=page_start, page_end=page_end,
+        parse_mode=mode,
     )
     return {"document_id": document.id, "status": document.status.value, "total_pages": document.total_pages, "page_range": f"{page_start}-{page_end or 'end'}"}
 

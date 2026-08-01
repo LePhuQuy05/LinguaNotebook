@@ -1,9 +1,12 @@
-"""Hybrid PDF Parser — auto-detects text layer, routes to best parser.
+"""Single-route PDF parser — auto-detects text layer.
 
 For PDFs with embedded text: PyMuPDF extraction (instant, 100% accurate)
 For scanned/image-based PDFs: HPD OCR (GPU-accelerated)
 
-This gives the best of both without new dependencies.
+The Marker and hybrid (HPD + Qwen-VL re-parse) branches were removed:
+the 2026-08-01 parse proved hybrid was a silent no-op that doubled parse
+time with zero quality gain (spec 006). The Qwen-VL integration module
+stays in the repo, unwired, for Stage 2 reuse.
 """
 
 import logging
@@ -133,16 +136,15 @@ def parse_pdf_hybrid(
     progress_callback: Optional[Callable] = None,
     cancel_check: Optional[Callable[[], bool]] = None,
 ) -> tuple[str, list[tuple[int, str]], str]:
-    """Parse a PDF using the best available method.
+    """Parse a PDF using the only route: text layer → PyMuPDF, else HPD OCR.
 
-    Modes:
-      - "fast": text extraction (PyMuPDF) for text PDFs, Marker fast for scans
-      - "balanced": Marker OCR with surya VLM for best quality
-      - "hpd": HPD OCR (GPU required, Intel XPU/CUDA)
-      - "hybrid": HPD for all pages + Qwen2.5-VL re-parse of important pages
-                 (TOC, tables, first pages) for high Japanese quality
+    The `mode` parameter is accepted for backward compatibility with older
+    API clients and queued Celery tasks, but is always ignored — the Marker
+    and hybrid (Qwen-VL) branches were removed (2026-08-01 evidence: hybrid
+    was a silent no-op doubling parse time).
 
-    Returns (markdown_text, errors, method_used).
+    Returns (markdown_text, errors, method_used) where method_used is
+    "text_layer" or "ocr".
     """
     # Check if PDF has embedded text
     if _has_text_layer(pdf_path):
@@ -154,47 +156,7 @@ def parse_pdf_hybrid(
         )
         return markdown, errors, "text_layer"
 
-    # Image-based PDF — use selected OCR method
-    if mode == "balanced":
-        # Try Marker with surya VLM first
-        from src.services.marker_parser import MarkerParser, has_marker_support
-        if has_marker_support():
-            logger.info("Using Marker OCR (balanced mode)")
-            parser = MarkerParser(mode="balanced")
-            try:
-                markdown, errors, method = parser.convert_pdf(
-                    pdf_path, page_start, page_end,
-                    progress_callback=progress_callback,
-                    cancel_check=cancel_check,
-                )
-                return markdown, errors, method
-            except Exception as e:
-                logger.warning(f"Marker failed, falling back to HPD: {e}")
-
-    if mode == "fast":
-        # Fast mode: try Marker text extraction first
-        from src.services.marker_parser import MarkerParser, has_marker_support
-        if has_marker_support():
-            logger.info("Using Marker text extraction (fast mode)")
-            parser = MarkerParser(mode="fast")
-            try:
-                markdown, errors, method = parser.convert_pdf(
-                    pdf_path, page_start, page_end,
-                    progress_callback=progress_callback,
-                    cancel_check=cancel_check,
-                )
-                return markdown, errors, method
-            except Exception as e:
-                logger.warning(f"Marker fast failed, falling back to HPD: {e}")
-
-    # HYBRID mode: HPD for all pages + Qwen2.5-VL re-parse of important pages
-    if mode == "hybrid":
-        return _parse_hybrid_hpd_qwen(
-            pdf_path, page_start, page_end, dpi, max_tokens,
-            progress_callback, cancel_check,
-        )
-
-    # Fall back to HPD OCR
+    # Image-based PDF — HPD OCR
     logger.info("Using HPD OCR (image-based PDF)")
     from src.utils.hpd_parser import HPDFParser
     from src.core.config import settings as _settings
@@ -211,89 +173,3 @@ def parse_pdf_hybrid(
         cancel_check=cancel_check,
     )
     return markdown, errors, "ocr"
-
-
-def _parse_hybrid_hpd_qwen(
-    pdf_path: str,
-    page_start: int = 1,
-    page_end: Optional[int] = None,
-    dpi: int = 100,
-    max_tokens: int = 2048,
-    progress_callback: Optional[Callable] = None,
-    cancel_check: Optional[Callable[[], bool]] = None,
-    max_qwen_pages: int = 15,
-) -> tuple[str, list[tuple[int, str]], str]:
-    """Hybrid: HPD parses all pages, Qwen2.5-VL re-parses important pages.
-
-    Important pages (TOC, tables, first pages) get high-quality OCR.
-    The rest uses fast HPD. Total time: HPD speed + N × ~200s.
-    """
-    import re
-
-    from src.utils.hpd_parser import HPDFParser
-
-    logger.info("Hybrid mode: HPD for all pages + Qwen for important pages")
-
-    # Step 1: HPD parses everything
-    from src.core.config import settings as _settings
-    parser = HPDFParser(
-        model_dir=_settings.hpd_model_path,
-        use_gpu=_settings.gpu_enabled,
-        gpu_type=getattr(_settings, 'gpu_type', 'cuda'),
-    )
-    parser.load_model()
-    markdown, errors = parser.parse_pdf(
-        pdf_path, page_start, page_end, dpi, max_tokens,
-        progress_callback=progress_callback,
-        cancel_check=cancel_check,
-    )
-
-    # Step 2: Find important pages from HPD output
-    from src.services.qwen_vlm_parser import QwenVLCParser, is_important_page
-
-    # Split markdown into per-page sections
-    page_sections = re.split(r'(?=--- Page \d+ ---)', markdown)
-    important_pages: list[int] = []
-    for section in page_sections:
-        m = re.match(r'--- Page (\d+) ---', section)
-        if m:
-            page_num = int(m.group(1))
-            if is_important_page(section, page_num):
-                important_pages.append(page_num)
-
-    # Cap the number of Qwen pages
-    important_pages = important_pages[:max_qwen_pages]
-
-    if not important_pages:
-        logger.info("No important pages detected — HPD output used as-is")
-        return markdown, errors, "hybrid_hpd_only"
-
-    logger.info(f"Qwen re-parsing {len(important_pages)} important pages: {important_pages}")
-
-    # Step 3: Qwen re-parses important pages
-    qwen = QwenVLCParser()
-    replacements: dict[int, str] = {}
-    for i, page_num in enumerate(important_pages):
-        if cancel_check and cancel_check():
-            break
-        try:
-            md = qwen.parse_page(pdf_path, page_num, dpi=100)
-            replacements[page_num] = md
-            logger.info(f"Qwen re-parsed page {page_num} ({i+1}/{len(important_pages)})")
-        except Exception as e:
-            errors.append((page_num, f"Qwen failed, kept HPD: {e}"))
-            logger.error(f"Qwen page {page_num} failed: {e}")
-
-    # Step 4: Replace important pages in combined markdown
-    if replacements:
-        new_sections = []
-        for section in page_sections:
-            m = re.match(r'--- Page (\d+) ---', section)
-            if m and int(m.group(1)) in replacements:
-                page_num = int(m.group(1))
-                new_sections.append(f"--- Page {page_num} ---\n{replacements[page_num]}\n")
-            else:
-                new_sections.append(section)
-        markdown = "".join(new_sections)
-
-    return markdown, errors, "hybrid_hpd_qwen"
