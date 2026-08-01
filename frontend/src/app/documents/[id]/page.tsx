@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { ArrowLeft, FileText } from "lucide-react";
 import Link from "next/link";
+import { MarkdownContent } from "../../../components/document/MarkdownContent";
 import { ParseProgress } from "../../../components/document/ParseProgress";
 
 interface ContentBlock {
@@ -20,6 +21,7 @@ interface DocumentDetail {
   total_pages: number | null;
   language: string | null;
   status: string;
+  parse_method: string | null;
   error_message: string | null;
   created_at: string;
   blocks: ContentBlock[];
@@ -88,21 +90,30 @@ export default function DocumentViewerPage() {
           <p className="text-sm text-foreground-muted">
             {doc.total_pages ? `${doc.total_pages} pages` : "Parsing..."}
             {doc.language ? ` · ${doc.language}` : ""}
-            {doc.parse_method ? ` · ${doc.parse_method === "text_layer" ? "📄 Text extraction" : "🔍 OCR"}` : ""}
+            {doc.parse_method
+              ? ` · ${doc.parse_method === "text_layer" ? "📄 Text extraction" : "🔍 OCR"}`
+              : ""}
           </p>
         </div>
       </div>
 
       {/* Show parse progress for queued/parsing docs (not for completed/failed/cancelled) */}
-      {(doc.status === "queued" || doc.status === "parsing" || doc.status === "uploading") && (
-        <ParseProgress documentId={id} onComplete={() => window.location.reload()} />
+      {(doc.status === "queued" ||
+        doc.status === "parsing" ||
+        doc.status === "uploading") && (
+        <ParseProgress
+          documentId={id}
+          onComplete={() => window.location.reload()}
+        />
       )}
 
       {/* Cancelled state */}
       {doc.status === "failed" && doc.error_message === "Cancelled by user" && (
         <div className="py-16 text-center">
           <p className="text-slate-500">Parsing was cancelled.</p>
-          <p className="mt-2 text-sm text-slate-400">Re-upload the document to try again.</p>
+          <p className="mt-2 text-sm text-slate-400">
+            Re-upload the document to try again.
+          </p>
         </div>
       )}
 
@@ -110,7 +121,9 @@ export default function DocumentViewerPage() {
       {doc.status === "completed" && doc.blocks.length === 0 && (
         <div className="py-16 text-center">
           <FileText className="mx-auto h-16 w-16 text-muted-foreground" />
-          <p className="mt-4 text-foreground-muted">No content blocks extracted.</p>
+          <p className="mt-4 text-foreground-muted">
+            No content blocks extracted.
+          </p>
         </div>
       )}
 
@@ -132,10 +145,9 @@ export default function DocumentViewerPage() {
                   Page {block.page_number}
                 </span>
               </div>
-              <div
-                className="prose prose-slate max-w-none font-body text-reading-text"
-                dangerouslySetInnerHTML={{ __html: block.content_markdown }}
-              />
+              <div className="prose prose-slate max-w-none font-body text-reading-text">
+                <MarkdownContent content={block.content_markdown} />
+              </div>
             </div>
           ))}
         </div>
@@ -144,7 +156,9 @@ export default function DocumentViewerPage() {
       {/* Failed state */}
       {doc.status === "failed" && (
         <div className="py-16 text-center">
-          <p className="text-destructive">Parsing failed: {doc.error_message || "Unknown error"}</p>
+          <p className="text-destructive">
+            Parsing failed: {doc.error_message || "Unknown error"}
+          </p>
         </div>
       )}
     </div>
