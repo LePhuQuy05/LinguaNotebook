@@ -7,6 +7,7 @@ dispatch chain must keep carrying it for backward compatibility.
 """
 
 import asyncio
+import inspect
 
 import pytest
 
@@ -62,7 +63,19 @@ def test_create_document_forwards_parse_mode_to_worker(fake_delay, stub_storage)
     assert doc.status.value == "queued"
     (args, kwargs) = fake_delay[0]
     assert args[:5] == (doc.id, f"documents/u1/{doc.id}/book.pdf", 100, 1, None)
-    assert kwargs == {"parse_mode": "hybrid"}
+    # Keyword must bind to the worker task's real parameter name (`mode`) —
+    # a mismatched name raises TypeError at dispatch time (real regression:
+    # `parse_mode=` keyword broke uploads with HTTP 500 until fixed).
+    assert kwargs == {"mode": "hybrid"}
+
+
+def test_worker_task_accepts_mode_keyword():
+    """Guard the chain end-to-end: the Celery task must accept `mode=`."""
+    from src.workers.parse_worker import parse_pdf_task
+
+    sig = inspect.signature(parse_pdf_task)
+
+    assert "mode" in sig.parameters
 
 
 def test_create_document_defaults_parse_mode_to_fast(fake_delay, stub_storage):
@@ -74,4 +87,4 @@ def test_create_document_defaults_parse_mode_to_fast(fake_delay, stub_storage):
         mime_type="application/pdf",
     ))
 
-    assert fake_delay[0][1] == {"parse_mode": "fast"}
+    assert fake_delay[0][1] == {"mode": "fast"}

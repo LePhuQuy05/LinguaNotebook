@@ -61,8 +61,10 @@ async def create_document(
 
     # Dispatch Celery task with page range
     from src.workers.parse_worker import parse_pdf_task
+    # Keyword `mode` must match the worker task's actual parameter name —
+    # a mismatched keyword raises TypeError at dispatch time.
     parse_pdf_task.delay(
-        doc_id, object_key, dpi, page_start, page_end, parse_mode=parse_mode,
+        doc_id, object_key, dpi, page_start, page_end, mode=parse_mode,
     )
 
     logger.info(f"Document {doc_id} queued for parsing: {filename}")
