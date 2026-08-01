@@ -14,6 +14,7 @@ export function DocumentUploader({ onUploadComplete }: DocumentUploaderProps) {
   const [pageStart, setPageStart] = useState(1);
   const [pageEnd, setPageEnd] = useState("");
   const [dpi, setDpi] = useState(100);
+  const [mode, setMode] = useState("fast");
 
   const handleUpload = useCallback(
     async (file: File) => {
@@ -36,6 +37,7 @@ export function DocumentUploader({ onUploadComplete }: DocumentUploaderProps) {
         const params = new URLSearchParams({
           dpi: String(dpi),
           page_start: String(pageStart),
+          mode: mode,
         });
         if (pageEnd) params.set("page_end", pageEnd);
 
@@ -55,7 +57,7 @@ export function DocumentUploader({ onUploadComplete }: DocumentUploaderProps) {
         setUploading(false);
       }
     },
-    [onUploadComplete, dpi, pageStart, pageEnd],
+    [onUploadComplete, dpi, pageStart, pageEnd, mode],
   );
 
   return (
@@ -77,6 +79,18 @@ export function DocumentUploader({ onUploadComplete }: DocumentUploaderProps) {
             className="w-20 rounded-lg border border-slate-200 px-3 py-2 text-center text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100"
             placeholder="end"
           />
+        </div>
+        <div className="flex items-center gap-2 text-sm">
+          <label className="font-medium text-slate-600">Mode:</label>
+          <select
+            value={mode}
+            onChange={(e) => setMode(e.target.value)}
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+          >
+            <option value="fast">⚡ Fast (CPU)</option>
+            <option value="balanced">🔍 Balanced (GPU)</option>
+            <option value="hybrid">🔄 Hybrid (HPD + Qwen VL)</option>
+          </select>
         </div>
         <div className="flex items-center gap-2 text-sm">
           <label className="font-medium text-slate-600">DPI:</label>
