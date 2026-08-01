@@ -1,0 +1,32 @@
+# Research State — PDF to Markdown on Intel Arc
+# Started: 2026-08-01
+# Question: What is the best way to convert Japanese scanned PDFs to structured markdown on Intel Arc 140V?
+
+question: "Cách chuyển đổi PDF (tiếng Nhật, dạng scan) sang markdown trên Intel Arc 140V"
+status: bootstrap
+
+# Baseline (current production)
+baseline:
+  tool: HPD-Parsing (PaddlePaddle)
+  speed: ~53s/page on Intel XPU
+  jp_quality: ~85% (15-20% char errors)
+  markdown: raw OCR text, no structure
+
+# Hypotheses (inner loop)
+hypotheses:
+  H1:
+    title: "Ollama + Qwen2.5-VL 7B on Intel Arc"
+    prediction: "Native SYCL support in Ollama → fast GPU inference (100+ tok/s), high JP quality, structured markdown via prompt"
+    status: pending  # model still downloading
+    metric: tokens_per_sec, seconds_per_page, char_error_rate, markdown_structure_score
+  H2:
+    title: "HPD remains best for speed, poor for structure"
+    prediction: "HPD is GPU-optimized for OCR but output lacks markdown structure"
+    status: confirmed_from_history  # known from 3 days of production use
+
+# Experiments
+experiments:
+  - id: EXP-001
+    hypothesis: H1
+    input: D:/test_shinkanzen.pdf (page 5, TOC)
+    status: waiting_for_model
