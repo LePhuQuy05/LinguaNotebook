@@ -10,7 +10,12 @@ from pathlib import Path
 
 import pytest
 
-from src.services.hpd_markdown import parse_page_blocks, split_pages
+from src.services.hpd_markdown import (
+    Block,
+    markdown_to_block_records,
+    parse_page_blocks,
+    split_pages,
+)
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "shinkanzen_n3_toc_pages.md"
 
@@ -121,6 +126,54 @@ class TestHeaderRecognition:
         blocks = parse_page_blocks("Note：\n\n本文です。")
         assert blocks[0].block_type == "header"
         assert blocks[0].content == "Note："
+
+
+class TestMarkdownToBlockRecords:
+    """Combined markdown → (page_number, block_type, content) records.
+
+    The worker's block-saving path consumes these records. Page numbers
+    must come from the `--- Page N ---` markers — the regression here is
+    the worker's old off-by-one: a 2-page doc stored blocks as pages 2-3
+    because the split discarded the marker numbers.
+    """
+
+    MARKDOWN = (
+        "\n--- Page 1 ---\nはじめに\n\n本文です。"
+        "\n--- Page 2 ---\n| a | b |\n| --- | --- |\n| c | d |"
+    )
+
+    def test_page_numbers_come_from_markers(self):
+        records = markdown_to_block_records(self.MARKDOWN)
+        assert [p for p, _ in records] == [1, 1, 2]
+
+    def test_records_carry_typed_blocks(self):
+        records = markdown_to_block_records(self.MARKDOWN)
+        assert [b.block_type for _, b in records] == ["header", "paragraph", "table"]
+
+    def test_non_consecutive_page_numbers_kept(self):
+        """A 3-page doc where page 2 is blank keeps real numbers (1, 3)."""
+        markdown = "\n--- Page 1 ---\n本文。\n--- Page 2 ---\n\n--- Page 3 ---\n続き。"
+        records = markdown_to_block_records(markdown)
+        assert [p for p, _ in records] == [1, 3]
+
+    def test_markerless_markdown_degrades_to_page_1(self):
+        records = markdown_to_block_records("本文のみ。")
+        assert records == [(1, Block(block_type="paragraph", content="本文のみ。"))]
+
+    def test_empty_input_yields_no_records(self):
+        assert markdown_to_block_records("") == []
+        assert markdown_to_block_records("   \n\n  ") == []
+
+    def test_fixture_records_cover_every_non_blank_page(self):
+        """Golden fixture: every non-blank page produces records, and no
+        record is shifted up by one (the worker's old regex-split bug)."""
+        raw = FIXTURE.read_text(encoding="utf-8")
+        pages = dict(split_pages(raw))
+        records = markdown_to_block_records(raw)
+        pages_seen = {p for p, _ in records}
+        non_blank = {n for n, body in pages.items() if body.strip()}
+        assert pages_seen == non_blank
+        assert max(pages_seen) == max(pages)  # no off-by-one shift
 
 
 class TestGoldenFixture:

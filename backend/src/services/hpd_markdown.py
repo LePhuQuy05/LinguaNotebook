@@ -180,6 +180,26 @@ def split_pages(markdown: str) -> list[tuple[int, str]]:
     ]
 
 
+def _pages_with_fallback(markdown: str) -> list[tuple[int, str]]:
+    """Page pairs, degrading to a single page 1 when no markers exist."""
+    pages = split_pages(markdown)
+    return pages or [(1, markdown)]
+
+
+def markdown_to_block_records(markdown: str) -> list[tuple[int, Block]]:
+    """Convert combined markdown into (page_number, block) records.
+
+    Composes `split_pages` with `parse_page_blocks`: page numbers come from
+    the `--- Page N ---` markers (never from array indexes), and each page's
+    text decomposes into typed blocks.
+    """
+    return [
+        (page_num, block)
+        for page_num, body in _pages_with_fallback(markdown)
+        for block in parse_page_blocks(body)
+    ]
+
+
 def main() -> None:
     """CLI demo: `python -m src.services.hpd_markdown <file.md>`."""
     import sys
@@ -190,9 +210,7 @@ def main() -> None:
         sys.exit(1)
 
     raw = Path(sys.argv[1]).read_text(encoding="utf-8")
-    pages = split_pages(raw)
-    if not pages:
-        pages = [(1, raw)]
+    pages = _pages_with_fallback(raw)
     for page_num, body in pages:
         print(f"### Page {page_num} ###")
         for b in parse_page_blocks(body):

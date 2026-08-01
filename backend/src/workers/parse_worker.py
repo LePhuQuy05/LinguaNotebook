@@ -8,9 +8,9 @@ import logging
 
 from src.core.config import settings
 from src.core.storage import get_storage_client, upload_file
-from src.workers.celery_app import celery_app
 from src.services.parser_service import set_parse_progress
-from src.utils.hpd_parser import HPDFParser, ProgressInfo
+from src.utils.hpd_parser import HPDFParser
+from src.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +41,7 @@ def _is_cancelled(document_id: str) -> bool:
 def _progress_callback(document_id: str, info) -> None:
     """Emit parsing progress to Redis for frontend polling (sync)."""
     import json
+
     from src.core.redis import sync_redis_client
     try:
         sync_redis_client.setex(
@@ -85,66 +86,56 @@ def _deduplicate_repeated_lines(markdown: str, threshold: int = 5) -> str:
 
 def _save_content_blocks(document_id: str, markdown: str, errors: list, method: str = ""):
     """Parse markdown into ContentBlock records and save to DB."""
-    import re
     import asyncio
+
     from sqlalchemy import select
+
     from src.core.database import AsyncSessionLocal
-    from src.models.document import Document, ContentBlock, BlockType, DocumentStatus
-    from src.models.user import User  # noqa: F401
+    from src.models.document import BlockType, ContentBlock, Document, DocumentStatus
     from src.models.knowledge_segment import KnowledgeSegment  # noqa: F401
     from src.models.learning import Lesson, LessonItem  # noqa: F401
     from src.models.schedule import Schedule  # noqa: F401
     from src.models.srs import SRSCard  # noqa: F401
-    from src.models.sync import Device, SyncLog, ProgressSnapshot  # noqa: F401
+    from src.models.sync import Device, ProgressSnapshot, SyncLog  # noqa: F401
+    from src.models.user import User  # noqa: F401
+    from src.services.hpd_markdown import markdown_to_block_records, split_pages
 
     # Detect and remove HPD degeneration
     markdown = _deduplicate_repeated_lines(markdown)
 
     async def _run():
         async with AsyncSessionLocal() as db:
-            doc = (await db.execute(select(Document).where(Document.id == document_id))).scalar_one_or_none()
+            doc = (
+                await db.execute(select(Document).where(Document.id == document_id))
+            ).scalar_one_or_none()
             if not doc:
                 return
 
-            pages = re.split(r'--- Page \d+ ---', markdown)
+            # Typed blocks with page numbers taken from the `--- Page N ---`
+            # markers — never from array indexes (the old split discarded the
+            # numbers, shifting every page up by one).
+            pages = split_pages(markdown)
+            records = markdown_to_block_records(markdown)
             blocks_saved = 0
 
-            for page_idx, page_content in enumerate(pages):
-                if not page_content.strip():
-                    continue
-                page_num = page_idx + 1
+            for page_num, block in records:
+                try:
+                    btype = BlockType(block.block_type)
+                except ValueError:
+                    btype = BlockType.paragraph
+                db.add(ContentBlock(
+                    document_id=document_id, page_number=page_num,
+                    block_type=btype, content_markdown=block.content,
+                    bbox=None, language=doc.language or "unknown",
+                ))
+                blocks_saved += 1
 
-                block_pattern = re.compile(
-                    r'<BLOCK>(header|paragraph|table|list|image_caption)\s*\[(\d+),(\d+),(\d+),(\d+)\](.*?)</BLOCK>',
-                    re.DOTALL,
-                )
-                matches = block_pattern.findall(page_content)
-
-                if not matches:
-                    db.add(ContentBlock(
-                        document_id=document_id, page_number=page_num,
-                        block_type=BlockType.paragraph,
-                        content_markdown=page_content.strip(),
-                        bbox=None, language=doc.language or "unknown",
-                    ))
-                    blocks_saved += 1
-                    continue
-
-                for btype, x1, y1, x2, y2, content in matches:
-                    try:
-                        block_type = BlockType(btype)
-                    except ValueError:
-                        block_type = BlockType.paragraph
-                    db.add(ContentBlock(
-                        document_id=document_id, page_number=page_num,
-                        block_type=block_type, content_markdown=content.strip(),
-                        bbox=[int(x1), int(y1), int(x2), int(y2)],
-                        language=doc.language or "unknown",
-                    ))
-                    blocks_saved += 1
-
-            doc.status = DocumentStatus.completed_with_errors if errors else DocumentStatus.completed
-            doc.total_pages = sum(1 for p in pages if p.strip())
+            doc.status = (
+                DocumentStatus.completed_with_errors if errors else DocumentStatus.completed
+            )
+            # Highest parsed page number — counts blank trailing pages too
+            # (a page marker with zero blocks still exists as a page).
+            doc.total_pages = max((n for n, _ in pages), default=0)
             doc.parse_method = method
             doc.parsed_content_path = f"parsed/{document_id}/combined.md"
             await db.commit()
@@ -159,7 +150,8 @@ def _save_content_blocks(document_id: str, markdown: str, errors: list, method: 
 
 @celery_app.task(name="parse_pdf", bind=True, max_retries=3)
 def parse_pdf_task(self, document_id: str, object_key: str, dpi: int = 100,
-                    page_start: int = 1, page_end: int = None) -> dict:
+                    page_start: int = 1, page_end: int = None,
+                    mode: str = "fast") -> dict:
     """Parse a PDF using the best available method: text extraction or OCR."""
     try:
         # Download PDF from storage
@@ -185,6 +177,7 @@ def parse_pdf_task(self, document_id: str, object_key: str, dpi: int = 100,
 
         # Write INITIAL progress
         import json
+
         from src.core.redis import sync_redis_client
         sync_redis_client.setex(
             f"parse:progress:{document_id}", 3600,
@@ -200,7 +193,7 @@ def parse_pdf_task(self, document_id: str, object_key: str, dpi: int = 100,
         combined_markdown, errors, method = parse_pdf_hybrid(
             pdf_path=tmp_path,
             page_start=page_start, page_end=page_end,
-            dpi=dpi,
+            dpi=dpi, mode=mode,
             progress_callback=lambda info: _progress_callback(document_id, info),
             cancel_check=lambda: _is_cancelled(document_id),
         )
