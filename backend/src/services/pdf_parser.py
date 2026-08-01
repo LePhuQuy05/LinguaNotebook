@@ -197,8 +197,13 @@ def parse_pdf_hybrid(
     # Fall back to HPD OCR
     logger.info("Using HPD OCR (image-based PDF)")
     from src.utils.hpd_parser import HPDFParser
+    from src.core.config import settings as _settings
 
-    parser = HPDFParser()
+    parser = HPDFParser(
+        model_dir=_settings.hpd_model_path,
+        use_gpu=_settings.gpu_enabled,
+        gpu_type=getattr(_settings, 'gpu_type', 'cuda'),
+    )
     parser.load_model()
     markdown, errors = parser.parse_pdf(
         pdf_path, page_start, page_end, dpi, max_tokens,
@@ -230,7 +235,12 @@ def _parse_hybrid_hpd_qwen(
     logger.info("Hybrid mode: HPD for all pages + Qwen for important pages")
 
     # Step 1: HPD parses everything
-    parser = HPDFParser()
+    from src.core.config import settings as _settings
+    parser = HPDFParser(
+        model_dir=_settings.hpd_model_path,
+        use_gpu=_settings.gpu_enabled,
+        gpu_type=getattr(_settings, 'gpu_type', 'cuda'),
+    )
     parser.load_model()
     markdown, errors = parser.parse_pdf(
         pdf_path, page_start, page_end, dpi, max_tokens,
