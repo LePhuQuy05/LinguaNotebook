@@ -164,6 +164,30 @@ class TestPersistentEventLoop:
 
         assert pw._get_event_loop() is pw._get_event_loop()
 
+    def test_parse_worker_uses_the_shared_worker_loop(self, worker):
+        """All worker modules must share one loop per process."""
+        from src.utils.worker_loop import get_event_loop
+
+        pw, _ = worker
+        assert pw._get_event_loop() is get_event_loop()
+
+
+class TestEmbedDispatch:
+    def test_dispatch_hands_document_to_embed_worker(self, worker, monkeypatch):
+        import types
+
+        import src.workers.embed_worker as ew
+
+        pw, _ = worker
+        calls = []
+        recorder = types.SimpleNamespace(delay=lambda **kw: calls.append(kw))
+        monkeypatch.setattr(ew, "embed_document_task", recorder)
+
+        pw._dispatch_embed("doc-1")
+
+        # user_id=None: the embed worker resolves it from the document
+        assert calls == [{"document_id": "doc-1", "user_id": None}]
+
     def test_saves_run_on_the_persistent_loop(self, worker, monkeypatch):
         import asyncio
 

@@ -1,33 +1,26 @@
 """Celery worker for PDF parsing.
 
 Auto-detects PDF text layer: PyMuPDF for text-based PDFs, HPD OCR for scanned PDFs.
-Emits progress to Redis for frontend polling.
+Emits progress to Redis for frontend polling. On success, hands off to the
+embed worker so blocks become searchable in Qdrant.
 """
 
-import asyncio
 import logging
 
 from src.core.config import settings
 from src.core.storage import get_storage_client, upload_file
 from src.services.parser_service import set_parse_progress
+from src.utils.worker_loop import get_event_loop as _get_event_loop
 from src.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
-# Persistent event loop for this worker process. The async engine's
-# connection pool binds to the loop that was running when its connections
-# were created. Creating a loop per task call and closing it afterwards
-# leaves pooled asyncpg connections pointing at a dead loop — the next
-# task crashes with "proactor.send on None" on Windows. One loop, created
-# once, never closed.
-_worker_loop = None
 
+def _dispatch_embed(document_id: str) -> None:
+    """Hand the parsed document to the embed worker (chunk → Qdrant)."""
+    from src.workers.embed_worker import embed_document_task
 
-def _get_event_loop():
-    global _worker_loop
-    if _worker_loop is None:
-        _worker_loop = asyncio.new_event_loop()
-    return _worker_loop
+    embed_document_task.delay(document_id=document_id, user_id=None)
 
 
 def _is_cancelled(document_id: str) -> bool:
@@ -272,6 +265,14 @@ def parse_pdf_task(
                     default=str,
                 ),
             )
+            return {"status": "completed", "document_id": document_id, "errors": len(errors)}
+
+        # Chunk + embed + index into Qdrant. Best effort: an embed failure
+        # must not fail the parse — the doc is already saved and viewable.
+        try:
+            _dispatch_embed(document_id)
+        except Exception as embed_err:
+            logger.error(f"Failed to dispatch embed for {document_id}: {embed_err}")
 
         logger.info(f"Document {document_id} parse complete")
         return {"status": "completed", "document_id": document_id, "errors": len(errors)}
