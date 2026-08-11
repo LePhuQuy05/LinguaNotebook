@@ -131,8 +131,11 @@ def test_full_job_lifecycle_builds_page_markdown(fake_http, tmp_path):
     assert client.uploaded["file"][0] == "document.pdf"
     assert client.uploaded["file"][1] == b"%PDF-1.4 fake"
 
-    # one progress event, mirroring the API's extracted/total pages
-    assert [(p.current_page, p.total_pages) for p in progress] == [(1, 2)]
+    # upload phase event first, then extraction mirroring the API's pages
+    assert [(p.phase, p.current_page, p.total_pages) for p in progress] == [
+        ("uploading", 0, 0),
+        ("extracting", 1, 2),
+    ]
     assert progress[0].status == "running"
 
 

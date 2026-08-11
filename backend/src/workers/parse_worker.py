@@ -56,6 +56,7 @@ def _progress_callback(document_id: str, info) -> None:
                     "eta_sec": info.eta_sec,
                     "pages_per_sec": info.pages_per_sec,
                     "errors": info.errors,
+                    "phase": info.phase or "",
                 },
                 default=str,
             ),

@@ -172,6 +172,16 @@ class PaddleOcrService:
             marker_offset = page_start - 1
             pdf_path = _slice_pdf(pdf_path, page_start, page_end)
 
+        # The API ingests the file before creating the job — for large
+        # scanned PDFs that takes minutes with zero job progress to show.
+        # Emit a phase hint so the frontend can label the stall.
+        if progress_callback:
+            progress_callback(ProgressInfo(
+                status="running", current_page=0, total_pages=0,
+                elapsed_sec=0.0, eta_sec=0.0, pages_per_sec=0.0,
+                errors=[], phase="uploading",
+            ))
+
         job_id = self._submit(pdf_path)
         logger.info(f"PaddleOCR job {job_id} submitted for {pdf_path}")
 
@@ -199,6 +209,7 @@ class PaddleOcrService:
                             eta_sec=0.0,
                             pages_per_sec=0.0,
                             errors=list(errors),
+                            phase="extracting",
                         )
                     )
             elif state == "done":

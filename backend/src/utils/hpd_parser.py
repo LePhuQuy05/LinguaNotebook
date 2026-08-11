@@ -29,6 +29,7 @@ class ProgressInfo:
     eta_sec: float = 0.0
     pages_per_sec: float = 0.0
     errors: list = field(default_factory=list)
+    phase: str = ""  # pipeline stage hint: "uploading" | "extracting" | ""
 
 
 class HPDFParser:
@@ -193,6 +194,8 @@ class HPDFParser:
                 logger.info("Parse cancelled by user")
                 break
             page_num = idx + 1
+            pixel_values = None  # bound before try so the finally-del is safe
+            img = None
             try:
                 page = doc.load_page(idx)
                 zoom = dpi / 72
@@ -211,10 +214,7 @@ class HPDFParser:
                 logger.error(f"Page {page_num} failed: {exc}")
 
             finally:
-                if "pixel_values" in dir():
-                    del pixel_values
-                if "img" in dir():
-                    del img
+                del pixel_values, img
                 if idx % 10 == 9:
                     if self.gpu_type == "xpu" and hasattr(torch, "xpu"):
                         torch.xpu.empty_cache()

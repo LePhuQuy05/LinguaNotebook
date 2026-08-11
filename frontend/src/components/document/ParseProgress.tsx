@@ -16,6 +16,7 @@ interface ProgressData {
   eta_sec: number;
   pages_per_sec: number;
   errors?: Array<{ page: number; message: string }>;
+  phase?: string;
 }
 
 export function ParseProgress({ documentId, onComplete, onCancel }: ParseProgressProps) {
@@ -80,14 +81,26 @@ export function ParseProgress({ documentId, onComplete, onCancel }: ParseProgres
     return `${m}m ${s}s`;
   };
 
+  const isUploading = progress.status === "running" && progress.phase === "uploading";
+
   return (
     <div className="space-y-4 rounded-xl border border-border bg-surface p-6">
       <div className="flex items-center justify-between">
         <h3 className="font-heading text-lg font-semibold">
-          {progress.status === "running" ? "Parsing..." : progress.status}
+          {progress.status === "running" && progress.phase === "extracting"
+            ? "Extracting with cloud OCR..."
+            : progress.status === "running"
+              ? "Parsing..."
+              : progress.status}
         </h3>
         <span className="text-sm text-foreground-muted">
-          Page {progress.current_page} of {progress.total_pages}
+          {isUploading ? (
+            "Uploading to OCR service — this can take a while for large books"
+          ) : (
+            <>
+              Page {progress.current_page} of {progress.total_pages}
+            </>
+          )}
         </span>
       </div>
 
