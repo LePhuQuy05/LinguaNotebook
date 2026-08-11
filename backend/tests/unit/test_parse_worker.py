@@ -143,3 +143,51 @@ class TestSaveContentBlocks:
 
         assert sessions["doc"].status.value == "completed_with_errors"
         assert sessions["doc"].parse_method == "ocr"
+
+
+class TestPersistentEventLoop:
+    """Regression: saves must run on one loop that lives for the process.
+
+    The old code created a fresh `asyncio.new_event_loop()` per save call
+    and closed it in a finally. The module-level async engine's asyncpg
+    pool binds its connections to the loop that was running when they were
+    created — a closed loop left them pointing at a dead proactor, and the
+    *second* save in one worker process crashed with
+    ``'NoneType' object has no attribute 'send'``
+    (proactor_events.py `_loop._proactor.send`). Real failure: OCR doc
+    parsed fine but every ContentBlock save failed after the first task
+    had already used the pool.
+    """
+
+    def test_event_loop_is_persistent_across_calls(self, worker):
+        pw, _ = worker
+
+        assert pw._get_event_loop() is pw._get_event_loop()
+
+    def test_saves_run_on_the_persistent_loop(self, worker, monkeypatch):
+        import asyncio
+
+        pw, _ = worker
+
+        class LoopRecordingSession(FakeSession):
+            def __init__(self, doc, loops):
+                super().__init__(doc)
+                self._loops = loops
+
+            async def commit(self):
+                self._loops.append(asyncio.get_running_loop())
+
+        loops = []
+
+        def fake_factory():
+            return LoopRecordingSession(FakeDocument(), loops)
+
+        monkeypatch.setattr("src.core.database.AsyncSessionLocal", fake_factory)
+
+        pw._save_content_blocks("doc-1", FIVE_PAGE_MARKDOWN, [], "ocr")
+        pw._save_content_blocks("doc-2", FIVE_PAGE_MARKDOWN, [], "ocr")
+
+        # Both saves ran on the SAME loop — the one that never gets closed.
+        assert len(loops) == 2
+        assert loops[0] is loops[1]
+        assert loops[0] is pw._get_event_loop()

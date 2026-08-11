@@ -4,6 +4,7 @@ Auto-detects PDF text layer: PyMuPDF for text-based PDFs, HPD OCR for scanned PD
 Emits progress to Redis for frontend polling.
 """
 
+import asyncio
 import logging
 
 from src.core.config import settings
@@ -13,10 +14,26 @@ from src.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
+# Persistent event loop for this worker process. The async engine's
+# connection pool binds to the loop that was running when its connections
+# were created. Creating a loop per task call and closing it afterwards
+# leaves pooled asyncpg connections pointing at a dead loop — the next
+# task crashes with "proactor.send on None" on Windows. One loop, created
+# once, never closed.
+_worker_loop = None
+
+
+def _get_event_loop():
+    global _worker_loop
+    if _worker_loop is None:
+        _worker_loop = asyncio.new_event_loop()
+    return _worker_loop
+
 
 def _is_cancelled(document_id: str) -> bool:
     """Check if a cancel flag has been set for this document."""
     from src.core.redis import sync_redis_client
+
     return sync_redis_client.exists(f"parse:cancel:{document_id}") > 0
 
 
@@ -25,19 +42,23 @@ def _progress_callback(document_id: str, info) -> None:
     import json
 
     from src.core.redis import sync_redis_client
+
     try:
         sync_redis_client.setex(
             f"parse:progress:{document_id}",
             3600,
-            json.dumps({
-                "status": info.status,
-                "current_page": info.current_page,
-                "total_pages": info.total_pages,
-                "elapsed_sec": info.elapsed_sec,
-                "eta_sec": info.eta_sec,
-                "pages_per_sec": info.pages_per_sec,
-                "errors": info.errors,
-            }, default=str),
+            json.dumps(
+                {
+                    "status": info.status,
+                    "current_page": info.current_page,
+                    "total_pages": info.total_pages,
+                    "elapsed_sec": info.elapsed_sec,
+                    "eta_sec": info.eta_sec,
+                    "pages_per_sec": info.pages_per_sec,
+                    "errors": info.errors,
+                },
+                default=str,
+            ),
         )
     except Exception as e:
         logger.error(f"Failed to write progress to Redis: {e}")
@@ -45,7 +66,7 @@ def _progress_callback(document_id: str, info) -> None:
 
 def _deduplicate_repeated_lines(markdown: str, threshold: int = 5) -> str:
     """Remove HPD degeneration: consecutive repeated lines."""
-    lines = markdown.split('\n')
+    lines = markdown.split("\n")
     cleaned = []
     prev_line = None
     repeat_count = 0
@@ -57,19 +78,17 @@ def _deduplicate_repeated_lines(markdown: str, threshold: int = 5) -> str:
             if repeat_count <= threshold:
                 cleaned.append(line)
             elif repeat_count == threshold + 1:
-                cleaned.append(f'[HPD repetition detected — {threshold}+ duplicates removed]')
+                cleaned.append(f"[HPD repetition detected — {threshold}+ duplicates removed]")
         else:
             repeat_count = 0
             prev_line = stripped
             cleaned.append(line)
 
-    return '\n'.join(cleaned)
+    return "\n".join(cleaned)
 
 
 def _save_content_blocks(document_id: str, markdown: str, errors: list, method: str = ""):
     """Parse markdown into ContentBlock records and save to DB."""
-    import asyncio
-
     from sqlalchemy import select
 
     from src.core.database import AsyncSessionLocal
@@ -105,11 +124,16 @@ def _save_content_blocks(document_id: str, markdown: str, errors: list, method: 
                     btype = BlockType(block.block_type)
                 except ValueError:
                     btype = BlockType.paragraph
-                db.add(ContentBlock(
-                    document_id=document_id, page_number=page_num,
-                    block_type=btype, content_markdown=block.content,
-                    bbox=None, language=doc.language or "unknown",
-                ))
+                db.add(
+                    ContentBlock(
+                        document_id=document_id,
+                        page_number=page_num,
+                        block_type=btype,
+                        content_markdown=block.content,
+                        bbox=None,
+                        language=doc.language or "unknown",
+                    )
+                )
                 blocks_saved += 1
 
             doc.status = (
@@ -123,17 +147,21 @@ def _save_content_blocks(document_id: str, markdown: str, errors: list, method: 
             await db.commit()
             logger.info(f"Saved {blocks_saved} ContentBlocks for document {document_id}")
 
-    loop = asyncio.new_event_loop()
-    try:
-        loop.run_until_complete(_run())
-    finally:
-        loop.close()
+    # Run on the worker's persistent loop — never close it, or pooled
+    # asyncpg connections die with the loop (see _get_event_loop).
+    _get_event_loop().run_until_complete(_run())
 
 
 @celery_app.task(name="parse_pdf", bind=True, max_retries=3)
-def parse_pdf_task(self, document_id: str, object_key: str, dpi: int = 100,
-                    page_start: int = 1, page_end: int = None,
-                    mode: str = "fast") -> dict:
+def parse_pdf_task(
+    self,
+    document_id: str,
+    object_key: str,
+    dpi: int = 100,
+    page_start: int = 1,
+    page_end: int = None,
+    mode: str = "fast",
+) -> dict:
     """Parse a PDF using the best available method: text extraction or OCR."""
     try:
         # Download PDF from storage
@@ -144,12 +172,14 @@ def parse_pdf_task(self, document_id: str, object_key: str, dpi: int = 100,
         # Write to temp file
         import os
         import tempfile
+
         with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
             tmp.write(pdf_bytes)
             tmp_path = tmp.name
 
         # Get page count for progress
         import fitz
+
         pdf_doc = fitz.open(tmp_path)
         total_pages = pdf_doc.page_count
         start = max(1, page_start) - 1
@@ -161,21 +191,32 @@ def parse_pdf_task(self, document_id: str, object_key: str, dpi: int = 100,
         import json
 
         from src.core.redis import sync_redis_client
+
         sync_redis_client.setex(
-            f"parse:progress:{document_id}", 3600,
-            json.dumps({
-                "status": "running", "current_page": 0,
-                "total_pages": to_process, "elapsed_sec": 0,
-                "eta_sec": 0, "pages_per_sec": 0, "errors": [],
-            }),
+            f"parse:progress:{document_id}",
+            3600,
+            json.dumps(
+                {
+                    "status": "running",
+                    "current_page": 0,
+                    "total_pages": to_process,
+                    "elapsed_sec": 0,
+                    "eta_sec": 0,
+                    "pages_per_sec": 0,
+                    "errors": [],
+                }
+            ),
         )
 
         # Auto-detect: text layer → PyMuPDF, else HPD OCR
         from src.services.pdf_parser import parse_pdf_hybrid
+
         combined_markdown, errors, method = parse_pdf_hybrid(
             pdf_path=tmp_path,
-            page_start=page_start, page_end=page_end,
-            dpi=dpi, mode=mode,
+            page_start=page_start,
+            page_end=page_end,
+            dpi=dpi,
+            mode=mode,
             progress_callback=lambda info: _progress_callback(document_id, info),
             cancel_check=lambda: _is_cancelled(document_id),
         )
@@ -193,13 +234,17 @@ def parse_pdf_task(self, document_id: str, object_key: str, dpi: int = 100,
 
         # Signal completion via Redis FIRST (before slow DB operations)
         sync_redis_client.setex(
-            f"parse:progress:{document_id}", 3600,
-            json.dumps({
-                "status": "completed_with_errors" if errors else "completed",
-                "result_key": result_key,
-                "total_pages": total_pages,
-                "errors": errors,
-            }, default=str),
+            f"parse:progress:{document_id}",
+            3600,
+            json.dumps(
+                {
+                    "status": "completed_with_errors" if errors else "completed",
+                    "result_key": result_key,
+                    "total_pages": total_pages,
+                    "errors": errors,
+                },
+                default=str,
+            ),
         )
 
         # Save ContentBlocks to DB (can be slow, frontend already shows completed)
@@ -208,13 +253,17 @@ def parse_pdf_task(self, document_id: str, object_key: str, dpi: int = 100,
         except Exception as save_err:
             logger.error(f"Failed to save content blocks for {document_id}: {save_err}")
             sync_redis_client.setex(
-                f"parse:progress:{document_id}", 3600,
-                json.dumps({
-                    "status": "completed_with_errors",
-                    "result_key": result_key,
-                    "total_pages": total_pages,
-                    "errors": errors + [f"DB save failed: {save_err}"],
-                }, default=str),
+                f"parse:progress:{document_id}",
+                3600,
+                json.dumps(
+                    {
+                        "status": "completed_with_errors",
+                        "result_key": result_key,
+                        "total_pages": total_pages,
+                        "errors": errors + [f"DB save failed: {save_err}"],
+                    },
+                    default=str,
+                ),
             )
 
         logger.info(f"Document {document_id} parse complete")
@@ -222,11 +271,13 @@ def parse_pdf_task(self, document_id: str, object_key: str, dpi: int = 100,
 
     except Exception as exc:
         logger.error(f"Parse failed for document {document_id}: {exc}")
-        import asyncio
-        loop = asyncio.new_event_loop()
-        loop.run_until_complete(set_parse_progress(document_id, {
-            "status": "failed",
-            "error": str(exc),
-        }))
-        loop.close()
+        _get_event_loop().run_until_complete(
+            set_parse_progress(
+                document_id,
+                {
+                    "status": "failed",
+                    "error": str(exc),
+                },
+            )
+        )
         raise self.retry(exc=exc, countdown=60)
