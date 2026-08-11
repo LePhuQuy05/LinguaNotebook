@@ -18,11 +18,12 @@ from src.utils.worker_loop import get_event_loop
 
 
 class FakeBlock:
-    def __init__(self, bid, content):
+    def __init__(self, bid, content, page=1):
         self.id = bid
         self.block_type = types.SimpleNamespace(value="paragraph")
         self.content_markdown = content
         self.language = "ja"
+        self.page_number = page
 
 
 class FakeDoc:

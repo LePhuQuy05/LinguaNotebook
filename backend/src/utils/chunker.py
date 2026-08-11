@@ -63,6 +63,7 @@ class SmartChunker:
             block_type = block["block_type"]
             content = block["content_markdown"]
             tokens = self._estimate_tokens(content)
+            page = int(block.get("page_number", 1))
 
             if block_type in ("header", "table", "list"):
                 # Always emit pending before a structural block
@@ -79,7 +80,11 @@ class SmartChunker:
                     chunk_index=len(chunks),
                     token_count=tokens,
                     language=language,
-                    metadata={"block_types": [block_type]},
+                    metadata={
+                        "block_types": [block_type],
+                        "page_start": page,
+                        "page_end": page,
+                    },
                 ))
             else:
                 # Paragraphs: check if adding this exceeds max
@@ -106,6 +111,7 @@ class SmartChunker:
         content = "\n\n".join(b["content_markdown"] for b in blocks)
         block_ids = [b["id"] for b in blocks]
         block_types = list({b["block_type"] for b in blocks})
+        pages = [int(b.get("page_number", 1)) for b in blocks]
         return Chunk(
             content=content,
             source_block_ids=block_ids,
@@ -113,11 +119,26 @@ class SmartChunker:
             chunk_index=chunk_index,
             token_count=self._estimate_tokens(content),
             language=language,
-            metadata={"block_types": block_types, "block_count": len(blocks)},
+            metadata={
+                "block_types": block_types,
+                "block_count": len(blocks),
+                "page_start": min(pages),
+                "page_end": max(pages),
+            },
         )
 
     @staticmethod
     def _estimate_tokens(text: str) -> int:
-        """Quick token estimate: ~1.3 tokens per word for English, ~1.5 for others."""
-        words = len(re.findall(r"\w+", text))
-        return max(1, int(words * 1.5))
+        """Quick token estimate: ~1.3 tokens per Latin word + ~1 token per
+        1.8 CJK characters.
+
+        The old word-only estimate counted ~1 token per Japanese block
+        (``\\w+`` has no CJK matches), so paragraph runs never hit the
+        500-token cap and chunks grew unbounded — slow to encode
+        (attention is quadratic in length) and bad for retrieval.
+        """
+        # \w matches CJK in Python 3 — restrict words to Latin/digits so
+        # Japanese is counted once, by the character estimate below.
+        words = len(re.findall(r"[A-Za-z0-9_]+", text))
+        cjk_chars = len(re.findall(r"[　-鿿]", text))
+        return max(1, int(words * 1.3 + cjk_chars / 1.8))

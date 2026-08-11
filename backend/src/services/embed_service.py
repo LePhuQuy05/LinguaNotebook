@@ -90,6 +90,7 @@ async def embed_and_index_chunks(
                 "language": chunk.language,
                 "difficulty": "intermediate",
                 "page_start": chunk.metadata.get("page_start", 1),
+                "page_end": chunk.metadata.get("page_end", chunk.metadata.get("page_start", 1)),
                 "chunk_index": chunk.chunk_index,
                 "token_count": chunk.token_count,
                 "created_at": chunk.metadata.get("created_at", ""),

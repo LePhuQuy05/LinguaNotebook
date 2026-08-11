@@ -59,6 +59,7 @@ def embed_document_task(self, document_id: str, user_id: str | None = None) -> d
                     "id": b.id,
                     "block_type": b.block_type.value,
                     "content_markdown": b.content_markdown,
+                    "page_number": b.page_number,
                 }
                 for b in blocks
             ]
