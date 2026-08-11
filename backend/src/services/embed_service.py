@@ -2,14 +2,11 @@
 
 import logging
 import uuid
-from collections.abc import Sequence
 
-from sentence_transformers import SentenceTransformer
 from fastembed import SparseTextEmbedding
+from sentence_transformers import SentenceTransformer
 
-from src.core.config import settings
-from src.core.qdrant import qdrant_client, ensure_collection, get_collection_name
-from src.core.redis import redis_client
+from src.core.qdrant import ensure_collection, get_collection_name, qdrant_client
 from src.utils.chunker import Chunk
 
 logger = logging.getLogger(__name__)
@@ -23,7 +20,12 @@ def _get_dense_model() -> SentenceTransformer:
     global _dense_model
     if _dense_model is None:
         logger.info("Loading BGE-M3 embedding model...")
-        _dense_model = SentenceTransformer("BAAI/bge-m3")
+        # Pinned to CPU: sentence-transformers auto-selects the Intel Arc
+        # iGPU here, and the encode pass OOMs against its 16 GiB budget
+        # (measured 2026-08-11: 52 GiB activation request). Background
+        # indexing on CPU is slower but reliable — the iGPU stays
+        # reserved for HPD OCR.
+        _dense_model = SentenceTransformer("BAAI/bge-m3", device="cpu")
         logger.info("BGE-M3 ready")
     return _dense_model
 
