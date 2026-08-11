@@ -205,6 +205,38 @@ def test_page_range_slices_pdf_and_offsets_markers(fake_http, tmp_path):
     assert "--- Page 2 ---" not in markdown
 
 
+def test_line_packing_multiple_layouts_yields_multiple_pages(fake_http, tmp_path):
+    """Regression (2026-08-11): the API packs several pages per JSONL line.
+
+    A 186-page book came back as 47 lines x 4 layoutParsingResults. The old
+    line=page mapping collapsed 4 pages into one marker and the doc lost
+    3/4 of its pages. Each layout result is one page.
+    """
+    pdf = tmp_path / "doc.pdf"
+    pdf.write_bytes(b"%PDF")
+
+    packed_jsonl = (
+        '{"result": {"layoutParsingResults": ['
+        '{"markdown": {"text": "page A"}}, {"markdown": {"text": "page B"}}, '
+        '{"markdown": {"text": "page C"}}, {"markdown": {"text": "page D"}}]}}\n'
+        '{"result": {"layoutParsingResults": [{"markdown": {"text": "page E"}}]}}\n'
+    )
+    fake_http(
+        get_responses=[
+            FakeResponse(json_data={"data": _done(5)}),
+            FakeResponse(text=packed_jsonl),
+        ]
+    )
+
+    markdown, errors = svc.PaddleOcrService(token="t").parse_pdf(str(pdf))
+
+    assert errors == []
+    assert markdown.count("--- Page") == 5
+    for n in (1, 2, 3, 4, 5):
+        assert f"--- Page {n} ---" in markdown
+    assert "page A" in markdown and "page E" in markdown
+
+
 def test_malformed_result_lines_become_errors(fake_http, tmp_path):
     pdf = tmp_path / "doc.pdf"
     pdf.write_bytes(b"%PDF")
@@ -225,5 +257,5 @@ def test_malformed_result_lines_become_errors(fake_http, tmp_path):
 
     assert "--- Page 1 ---" in markdown  # good line survived
     assert markdown.count("--- Page") == 1
-    assert len(errors) >= 2  # malformed line + missing page
+    assert len(errors) >= 2  # malformed line + shortfall summary
     assert any("malformed JSONL" in msg for _, msg in errors)

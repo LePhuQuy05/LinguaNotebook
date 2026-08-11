@@ -1,10 +1,11 @@
 """PaddleOCR-VL cloud API adapter — PDF → per-page markdown.
 
 Job-based Baidu AI Studio API (https://ai.baidu.com/ai-doc/AISTUDIO/7mfz6dgx9):
-submit PDF → poll job state → download JSONL results. Each JSONL line is one
-page; `layoutParsingResults[].markdown.text` is joined into `--- Page N ---`
-markdown — the same marker contract `split_pages` / `markdown_to_block_records`
-consume, so the rest of the parse pipeline is backend-agnostic.
+submit PDF → poll job state → download JSONL results. Each
+`layoutParsingResult` is one PDF page (lines can pack several); its
+`markdown.text` becomes a `--- Page N ---` chunk — the same marker contract
+`split_pages` / `markdown_to_block_records` consume, so the rest of the
+parse pipeline is backend-agnostic.
 
 Selected via the `OCR_BACKEND` setting ("paddle", or "auto" with a token
 configured). Replaces the local HPD GPU path when the GPU is too slow.
@@ -117,9 +118,11 @@ class PaddleOcrService:
     ) -> str:
         """Download the JSONL and build `--- Page N ---` markdown.
 
-        One JSONL line = one page; a page with several layout results joins
-        them. `page_offset` realigns markers when the PDF was sliced for a
-        page range (cloud API numbers results from 1).
+        One `layoutParsingResult` = one PDF page — the API packs several
+        pages into each JSONL line (measured 2026-08-11: 47 lines carried
+        186 results for a 186-page book), and `extractProgress.totalPages`
+        counts results. `page_offset` realigns markers when the PDF was
+        sliced for a page range (cloud API numbers results from 1).
         """
         text = self._download_jsonl(jsonl_url)
         lines = [ln for ln in text.strip().split("\n") if ln.strip()]
@@ -134,16 +137,12 @@ class PaddleOcrService:
             except (json.JSONDecodeError, KeyError, TypeError) as exc:
                 errors.append((parsed_pages + 1, f"malformed JSONL line {line_num}: {exc}"))
                 continue
-            if not layouts:
-                errors.append((parsed_pages + 1, "page missing from OCR result"))
-                continue
-            parsed_pages += 1
-            page_md = "\n\n".join(
-                res.get("markdown", {}).get("text", "") for res in layouts
-            ).strip()
-            parts.append(f"\n--- Page {page_offset + parsed_pages} ---\n")
-            parts.append(page_md)
-            parts.append("")
+            for layout in layouts:
+                parsed_pages += 1
+                page_md = layout.get("markdown", {}).get("text", "").strip()
+                parts.append(f"\n--- Page {page_offset + parsed_pages} ---\n")
+                parts.append(page_md)
+                parts.append("")
 
         if parsed_pages < total:
             errors.append(

@@ -43,7 +43,7 @@ POST /api/v1/documents/upload → PDF to MinIO → Celery parse_pdf task
 
 - Progress streams via Redis keys `parse:progress:<doc_id>` (JSON: status/current_page/errors/...) and cancel flag `parse:cancel:<doc_id>`; the API polls these.
 - The API still accepts a `mode` parameter but the **worker ignores it** (backward compat). Marker and hybrid (HPD + Qwen-VL re-parse) branches were removed after the 2026-08-01 parse proved hybrid was a silent no-op (spec 006). `services/qwen_vlm_parser.py` stays unwired for Stage 2. `parse_method` truthfully reports `text_layer` or `ocr`.
-- `services/paddle_ocr_service.py` wraps the PaddleOCR-VL job API (submit → poll → JSONL): the bearer token lives in `PADDLE_OCR_TOKEN` (.env, gitignored) — never commit it. Each JSONL line is one page; markers come from line order.
+- `services/paddle_ocr_service.py` wraps the PaddleOCR-VL job API (submit → poll → JSONL): the bearer token lives in `PADDLE_OCR_TOKEN` (.env, gitignored) — never commit it. Each `layoutParsingResult` is one PDF page (one JSONL line can pack several); page numbers come from result order.
 - `services/hpd_markdown.py` converts OCR markdown to typed blocks: conservative classifier (heading→paragraph degradation OK, table rows must never split). Page numbers come from the `--- Page N ---` markers, never array indexes.
 - HPD degeneration fix: `_deduplicate_repeated_lines()` in `workers/parse_worker.py` collapses repeated lines before block parsing.
 - `utils/hpd_parser.py` wraps the HPD engine itself; `services/pdf_parser.py` is the text-layer/OCR router.
