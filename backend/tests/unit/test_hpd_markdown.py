@@ -12,6 +12,7 @@ import pytest
 
 from src.services.hpd_markdown import (
     Block,
+    clean_markdown,
     markdown_to_block_records,
     parse_page_blocks,
     split_pages,
@@ -221,3 +222,48 @@ class TestGoldenFixture:
         joined = "\n".join(b.content for b in blocks)
         for expected in ["新完全マスター語彙 日本語能力試験 N3", "スリーエーネットワーク"]:
             assert expected in joined
+
+
+class TestCleanMarkdown:
+    """HTML tags from the cloud OCR must never reach blocks or embeddings.
+
+    Measured on GOI.pdf: 75 blocks carry dead <img src="imgs/..."> refs
+    (images are never downloaded) and 88 <div style="..."> wrappers. The
+    tags would become junk tokens inside vector embeddings.
+    """
+
+    def test_strips_real_ocr_div_and_img_pattern(self):
+        page = (
+            '<div style="text-align: center;"><img '
+            'src="imgs/img_in_image_box_105_585_928_1144.jpg" '
+            'alt="Image" width="74%" /></div>\n\n'
+            "伊能裕晃・本田ゆかり・来栖里美・前坊香菜子著"
+        )
+        cleaned = clean_markdown(page)
+        assert "<div" not in cleaned and "<img" not in cleaned and "</div>" not in cleaned
+        assert "伊能裕晃・本田ゆかり・来栖里美・前坊香菜子著" in cleaned
+
+    def test_japanese_text_and_markdown_tables_untouched(self):
+        text = "# 天気\n\n| 単語 | 意味 |\n| --- | --- |\n| 晴れ | はれ |\n\n雨が降る。"
+        assert clean_markdown(text) == text
+
+    def test_math_and_comparison_symbols_survive(self):
+        assert clean_markdown("A < B") == "A < B"
+        assert clean_markdown("A<B") == "A<B"
+        assert clean_markdown("1 < 2 のとき") == "1 < 2 のとき"
+
+    def test_text_with_gt_inside_tag_wrappers_survives(self):
+        """'<' must not swallow content up to a stray '>' (review finding)."""
+        assert clean_markdown("<div>foo > bar</div>") == "foo > bar"
+        assert clean_markdown("<p>3 > 2 のとき</p>") == "3 > 2 のとき"
+
+    def test_inline_bold_tags_stripped_but_text_kept(self):
+        assert clean_markdown("<b>重要</b>な言葉") == "重要な言葉"
+
+    def test_tag_only_string_becomes_empty(self):
+        assert clean_markdown('<div style="x"></div>') == ""
+
+    def test_line_structure_preserved(self):
+        # Tags go, text content never does (real OCR divs wrap only tags).
+        cleaned = clean_markdown("<div>x</div>\n\n本文\n\n<img src='y' />\n")
+        assert cleaned == "x\n\n本文\n\n\n"

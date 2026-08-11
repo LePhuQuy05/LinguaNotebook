@@ -221,6 +221,12 @@ def parse_pdf_task(
             progress_callback=lambda info: _progress_callback(document_id, info),
             cancel_check=lambda: _is_cancelled(document_id),
         )
+        # Strip HTML tags the OCR occasionally emits (<img>/<div> — dead
+        # refs to images we never download). Clean once so both the MinIO
+        # combined.md and the Postgres blocks stay clean at the source.
+        from src.services.hpd_markdown import clean_markdown
+
+        combined_markdown = clean_markdown(combined_markdown)
         logger.info(f"Document {document_id} parsed via {method}: {len(combined_markdown)} chars")
 
         # Clean up temp file

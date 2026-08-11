@@ -19,6 +19,28 @@ BLOCK_TABLE = "table"
 BLOCK_LIST = "list"
 BLOCK_PARAGRAPH = "paragraph"
 
+# HTML tags the cloud OCR occasionally emits: <img src="imgs/..."> refs to
+# images we never download, and <div style="..."> wrappers. A tag must be
+# `<` + letter + [^<>]* + `>`: the letter guard keeps "<3" symbols safe,
+# the required `>` keeps "A<B" (no closing bracket) safe, and `[^<>]`
+# (stop at either bracket) keeps text like "<div>foo > bar</div>" from
+# swallowing "foo > bar". A bare "<y>" is indistinguishable from a tag —
+# not present in this OCR's output.
+_TAG_RE = re.compile(r"</?[a-zA-Z][^<>]*>")
+
+
+def clean_markdown(text: str) -> str:
+    """Strip HTML tags from OCR markdown before storing/embedding.
+
+    Measured on GOI.pdf: 75 blocks carry dead ``<img src="imgs/...">`` refs
+    and 88 ``<div style="...">`` wrappers — 264 KB of the 416 KB output was
+    inline tag/base64 junk. Tags become junk tokens inside vector
+    embeddings, so they are removed at the source — surrounding text and
+    line structure are preserved.
+    """
+    return _TAG_RE.sub("", text)
+
+
 # Kana + kanji (for heading detection)
 _KANA_KANJI = re.compile(r"[぀-ヿ一-鿿]")
 # Digit/punctuation-only lines (page numbers like "166") are never headings
