@@ -23,6 +23,7 @@ async def lifespan(app: FastAPI):
     from src.models.learning import Lesson, LessonItem  # noqa: F401
     from src.models.srs import SRSCard  # noqa: F401
     from src.models.sync import Device, SyncLog, ProgressSnapshot  # noqa: F401
+    from src.models.document_structure import DocumentStructure  # noqa: F401
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
