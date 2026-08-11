@@ -1,7 +1,5 @@
 """Application configuration via Pydantic Settings."""
 
-from typing import List
-
 from pydantic_settings import BaseSettings
 
 
@@ -48,8 +46,19 @@ class Settings(BaseSettings):
     # HPD Model
     hpd_model_path: str = "./model"
 
+    # OCR backend for image-based PDFs:
+    #   "auto"   → PaddleOCR-VL cloud API if a token is configured, else local HPD
+    #   "paddle" → cloud API only (requires PADDLE_OCR_TOKEN)
+    #   "local"  → local HPD GPU model only
+    ocr_backend: str = "auto"
+
+    # PaddleOCR-VL cloud API (https://ai.baidu.com/ai-doc/AISTUDIO/7mfz6dgx9)
+    paddle_ocr_token: str = ""  # bearer token — keep in .env, never commit
+    paddle_ocr_job_url: str = "https://paddleocr.aistudio-app.com/api/v2/ocr/jobs"
+    paddle_ocr_model: str = "PaddleOCR-VL-1.6"
+
     # CORS
-    cors_origins: List[str] = ["http://localhost:3000", "http://localhost:19006"]
+    cors_origins: list[str] = ["http://localhost:3000", "http://localhost:19006"]
 
     # Donations
     github_sponsors_url: str = ""

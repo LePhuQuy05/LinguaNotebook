@@ -1,8 +1,11 @@
 """Parse routing tests — the single OCR route (spec 006, ticket 04).
 
 Guards the ticket's core acceptance: parse routing has exactly two branches
-(text layer → PyMuPDF, otherwise → HPD) and no Marker/hybrid/Qwen-VL branch
-is reachable — whatever the (compat-only) `mode` parameter carries.
+(text layer → PyMuPDF, otherwise → OCR backend) and no Marker/hybrid/Qwen-VL
+branch is reachable — whatever the (compat-only) `mode` parameter carries.
+The OCR backend itself is config-switchable: local HPD vs PaddleOCR-VL cloud
+(OCR_BACKEND setting) — routing tests pin the backend so they never touch
+the network or torch.
 """
 
 import sys
@@ -43,13 +46,60 @@ def stub_hpd(monkeypatch):
         def load_model(self):
             pass
 
-        def parse_pdf(self, pdf_path, page_start=1, page_end=None, dpi=100,
-                      max_tokens=2048, progress_callback=None, cancel_check=None):
+        def parse_pdf(
+            self,
+            pdf_path,
+            page_start=1,
+            page_end=None,
+            dpi=100,
+            max_tokens=2048,
+            progress_callback=None,
+            cancel_check=None,
+        ):
             return "# fake md", []
 
     module = types.ModuleType("src.utils.hpd_parser")
     module.HPDFParser = FakeHPD
     monkeypatch.setitem(sys.modules, "src.utils.hpd_parser", module)
+
+
+@pytest.fixture
+def stub_paddle(monkeypatch):
+    """Stub PaddleOcrService so routing tests never hit the network."""
+
+    calls: dict[str, tuple] = {}
+
+    class FakePaddle:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def parse_pdf(
+            self,
+            pdf_path,
+            page_start=1,
+            page_end=None,
+            dpi=100,
+            max_tokens=2048,
+            progress_callback=None,
+            cancel_check=None,
+        ):
+            calls["args"] = (pdf_path, page_start, page_end, dpi, max_tokens)
+            return "# paddle md", []
+
+    module = types.ModuleType("src.services.paddle_ocr_service")
+    module.PaddleOcrService = FakePaddle
+    monkeypatch.setitem(sys.modules, "src.services.paddle_ocr_service", module)
+    return calls
+
+
+@pytest.fixture
+def local_backend(monkeypatch):
+    monkeypatch.setattr(pdf_parser, "_ocr_backend", lambda: "local")
+
+
+@pytest.fixture
+def paddle_backend(monkeypatch):
+    monkeypatch.setattr(pdf_parser, "_ocr_backend", lambda: "paddle")
 
 
 @pytest.fixture
@@ -69,7 +119,8 @@ def text_layer_extraction(monkeypatch):
     """Text-layer PDF whose extraction returns a canned result."""
     monkeypatch.setattr(pdf_parser, "_has_text_layer", lambda path: True)
     monkeypatch.setattr(
-        pdf_parser, "extract_text_pymupdf",
+        pdf_parser,
+        "extract_text_pymupdf",
         lambda *a, **k: ("md", []),
     )
 
@@ -77,15 +128,18 @@ def text_layer_extraction(monkeypatch):
 def test_text_layer_routes_to_pymupdf(text_layer_pdf, monkeypatch):
     calls: dict[str, tuple] = {}
 
-    def fake_extract(pdf_path, page_start=1, page_end=None,
-                     progress_callback=None, cancel_check=None):
+    def fake_extract(
+        pdf_path, page_start=1, page_end=None, progress_callback=None, cancel_check=None
+    ):
         calls["args"] = (pdf_path, page_start, page_end)
         return "extracted md", []
 
     monkeypatch.setattr(pdf_parser, "extract_text_pymupdf", fake_extract)
 
     markdown, errors, method = pdf_parser.parse_pdf_hybrid(
-        "/book.pdf", page_start=2, page_end=5,
+        "/book.pdf",
+        page_start=2,
+        page_end=5,
     )
 
     assert method == "text_layer"
@@ -94,7 +148,9 @@ def test_text_layer_routes_to_pymupdf(text_layer_pdf, monkeypatch):
     assert calls["args"] == ("/book.pdf", 2, 5)
 
 
-def test_scanned_pdf_routes_to_hpd(scanned_pdf, stub_hpd, unreachable_parser_modules):
+def test_scanned_pdf_routes_to_hpd(
+    scanned_pdf, stub_hpd, local_backend, unreachable_parser_modules
+):
     markdown, errors, method = pdf_parser.parse_pdf_hybrid("/scan.pdf")
 
     assert method == "ocr"
@@ -103,16 +159,79 @@ def test_scanned_pdf_routes_to_hpd(scanned_pdf, stub_hpd, unreachable_parser_mod
 
 
 @pytest.mark.parametrize("mode", ["fast", "balanced", "hybrid", "hpd", "garbage"])
-def test_mode_is_ignored_for_scanned_pdfs(scanned_pdf, stub_hpd,
-                                          unreachable_parser_modules, mode):
+def test_mode_is_ignored_for_scanned_pdfs(
+    scanned_pdf, stub_hpd, local_backend, unreachable_parser_modules, mode
+):
     _, _, method = pdf_parser.parse_pdf_hybrid("/scan.pdf", mode=mode)
 
     assert method == "ocr"
 
 
+def test_scanned_pdf_routes_to_paddle_cloud(
+    scanned_pdf, stub_paddle, paddle_backend, unreachable_parser_modules
+):
+    markdown, errors, method = pdf_parser.parse_pdf_hybrid(
+        "/scan.pdf",
+        page_start=1,
+        page_end=None,
+        dpi=150,
+    )
+
+    assert method == "ocr"
+    assert markdown == "# paddle md"
+    assert errors == []
+
+
+def test_paddle_receives_parse_arguments(
+    scanned_pdf, stub_paddle, paddle_backend, unreachable_parser_modules
+):
+    calls = stub_paddle
+
+    pdf_parser.parse_pdf_hybrid("/scan.pdf", page_start=2, page_end=5, dpi=150)
+
+    assert calls["args"] == ("/scan.pdf", 2, 5, 150, 2048)
+
+
+def test_auto_backend_picks_paddle_when_token_configured(
+    scanned_pdf, stub_paddle, monkeypatch, unreachable_parser_modules
+):
+    from src.core.config import settings
+
+    monkeypatch.setattr(settings, "ocr_backend", "auto")
+    monkeypatch.setattr(settings, "paddle_ocr_token", "secret")
+
+    _, _, method = pdf_parser.parse_pdf_hybrid("/scan.pdf")
+
+    assert method == "ocr"
+
+
+def test_auto_backend_picks_local_without_token(
+    scanned_pdf, stub_hpd, monkeypatch, unreachable_parser_modules
+):
+    from src.core.config import settings
+
+    monkeypatch.setattr(settings, "ocr_backend", "auto")
+    monkeypatch.setattr(settings, "paddle_ocr_token", "")
+
+    markdown, _, method = pdf_parser.parse_pdf_hybrid("/scan.pdf")
+
+    assert method == "ocr"
+    assert markdown == "# fake md"
+
+
+def test_paddle_never_imported_for_text_pdfs(
+    text_layer_extraction, unreachable_parser_modules, monkeypatch
+):
+    monkeypatch.setitem(sys.modules, "src.services.paddle_ocr_service", _UnimportableModule())
+
+    markdown, _, method = pdf_parser.parse_pdf_hybrid("/book.pdf")
+
+    assert method == "text_layer"
+    assert markdown == "md"
+
+
 @pytest.mark.parametrize("mode", ["fast", "balanced", "hybrid"])
-def test_mode_is_ignored_for_text_pdfs(text_layer_extraction,
-                                       unreachable_parser_modules, mode):
+def test_mode_is_ignored_for_text_pdfs(text_layer_extraction, unreachable_parser_modules, mode):
     _, _, method = pdf_parser.parse_pdf_hybrid("/book.pdf", mode=mode)
 
     assert method == "text_layer"
@@ -131,6 +250,7 @@ def test_hpd_never_imported_for_text_pdfs(text_layer_extraction, monkeypatch):
 # ---------------------------------------------------------------------------
 # Real-PDF behaviour (fitz generates tiny PDFs in-memory)
 # ---------------------------------------------------------------------------
+
 
 def _make_text_pdf(path: str, pages: int = 2) -> str:
     """Generate a PDF with an embedded text layer (ASCII only)."""
@@ -181,7 +301,10 @@ def test_extract_text_pymupdf_reports_progress(tmp_path):
     seen: list[object] = []
 
     _, errors = pdf_parser.extract_text_pymupdf(
-        pdf, page_start=1, page_end=2, progress_callback=seen.append,
+        pdf,
+        page_start=1,
+        page_end=2,
+        progress_callback=seen.append,
     )
 
     assert errors == []
@@ -194,7 +317,8 @@ def test_extract_text_pymupdf_stops_on_cancel(tmp_path):
     pdf = _make_text_pdf(str(tmp_path / "book.pdf"), pages=5)
 
     markdown, errors = pdf_parser.extract_text_pymupdf(
-        pdf, cancel_check=lambda: True,
+        pdf,
+        cancel_check=lambda: True,
     )
 
     assert errors == []

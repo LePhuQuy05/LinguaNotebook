@@ -1,7 +1,8 @@
 """Single-route PDF parser — auto-detects text layer.
 
 For PDFs with embedded text: PyMuPDF extraction (instant, 100% accurate)
-For scanned/image-based PDFs: HPD OCR (GPU-accelerated)
+For scanned/image-based PDFs: OCR — PaddleOCR-VL cloud API or local HPD,
+selected by the OCR_BACKEND setting (see src.core.config).
 
 The Marker and hybrid (HPD + Qwen-VL re-parse) branches were removed:
 the 2026-08-01 parse proved hybrid was a silent no-op that doubled parse
@@ -10,8 +11,8 @@ stays in the repo, unwired, for Stage 2 reuse.
 """
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable, Optional
 
 import fitz  # PyMuPDF
 
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PageContent:
     """Content extracted from a single page."""
+
     page_num: int
     text: str
     blocks: list[dict] = field(default_factory=list)
@@ -63,9 +65,9 @@ def _has_text_layer(pdf_path: str, sample_pages: int = 3) -> bool:
 def extract_text_pymupdf(
     pdf_path: str,
     page_start: int = 1,
-    page_end: Optional[int] = None,
-    progress_callback: Optional[Callable] = None,
-    cancel_check: Optional[Callable[[], bool]] = None,
+    page_end: int | None = None,
+    progress_callback: Callable | None = None,
+    cancel_check: Callable[[], bool] | None = None,
 ) -> tuple[str, list[tuple[int, str]]]:
     """Extract text from a PDF using PyMuPDF's built-in text extraction.
 
@@ -105,15 +107,21 @@ def extract_text_pymupdf(
             pps = done / elapsed if elapsed > 0 else 0
             left = to_process - done
 
-            progress_callback(type('Progress', (), {
-                'status': 'running',
-                'current_page': done,
-                'total_pages': to_process,
-                'elapsed_sec': elapsed,
-                'eta_sec': (left / pps) if pps > 0 else 0,
-                'pages_per_sec': pps,
-                'errors': list(errors),
-            }))
+            progress_callback(
+                type(
+                    "Progress",
+                    (),
+                    {
+                        "status": "running",
+                        "current_page": done,
+                        "total_pages": to_process,
+                        "elapsed_sec": elapsed,
+                        "eta_sec": (left / pps) if pps > 0 else 0,
+                        "pages_per_sec": pps,
+                        "errors": list(errors),
+                    },
+                )
+            )
 
     doc.close()
 
@@ -126,22 +134,36 @@ def extract_text_pymupdf(
     return combined, errors
 
 
+def _ocr_backend() -> str:
+    """Which OCR engine to use for image-based PDFs."""
+    from src.core.config import settings
+
+    backend = settings.ocr_backend
+    if backend == "auto":
+        return "paddle" if settings.paddle_ocr_token else "local"
+    return backend
+
+
 def parse_pdf_hybrid(
     pdf_path: str,
     page_start: int = 1,
-    page_end: Optional[int] = None,
+    page_end: int | None = None,
     dpi: int = 100,
     max_tokens: int = 2048,
     mode: str = "fast",
-    progress_callback: Optional[Callable] = None,
-    cancel_check: Optional[Callable[[], bool]] = None,
+    progress_callback: Callable | None = None,
+    cancel_check: Callable[[], bool] | None = None,
 ) -> tuple[str, list[tuple[int, str]], str]:
-    """Parse a PDF using the only route: text layer → PyMuPDF, else HPD OCR.
+    """Parse a PDF: text layer → PyMuPDF, else the configured OCR backend.
 
     The `mode` parameter is accepted for backward compatibility with older
     API clients and queued Celery tasks, but is always ignored — the Marker
     and hybrid (Qwen-VL) branches were removed (2026-08-01 evidence: hybrid
     was a silent no-op doubling parse time).
+
+    OCR backend is per OCR_BACKEND setting: "paddle" → PaddleOCR-VL cloud
+    API (no local GPU needed), "local" → HPD on XPU/CUDA, "auto" → paddle
+    when a token is configured, else local.
 
     Returns (markdown_text, errors, method_used) where method_used is
     "text_layer" or "ocr".
@@ -150,25 +172,46 @@ def parse_pdf_hybrid(
     if _has_text_layer(pdf_path):
         logger.info("Using PyMuPDF text extraction (text-based PDF)")
         markdown, errors = extract_text_pymupdf(
-            pdf_path, page_start, page_end,
+            pdf_path,
+            page_start,
+            page_end,
             progress_callback=progress_callback,
             cancel_check=cancel_check,
         )
         return markdown, errors, "text_layer"
 
-    # Image-based PDF — HPD OCR
+    # Image-based PDF — configured OCR backend
+    if _ocr_backend() == "paddle":
+        from src.services.paddle_ocr_service import PaddleOcrService
+
+        logger.info("Using PaddleOCR-VL cloud API (image-based PDF)")
+        markdown, errors = PaddleOcrService().parse_pdf(
+            pdf_path,
+            page_start,
+            page_end,
+            dpi,
+            max_tokens,
+            progress_callback=progress_callback,
+            cancel_check=cancel_check,
+        )
+        return markdown, errors, "ocr"
+
     logger.info("Using HPD OCR (image-based PDF)")
-    from src.utils.hpd_parser import HPDFParser
     from src.core.config import settings as _settings
+    from src.utils.hpd_parser import HPDFParser
 
     parser = HPDFParser(
         model_dir=_settings.hpd_model_path,
         use_gpu=_settings.gpu_enabled,
-        gpu_type=getattr(_settings, 'gpu_type', 'cuda'),
+        gpu_type=getattr(_settings, "gpu_type", "cuda"),
     )
     parser.load_model()
     markdown, errors = parser.parse_pdf(
-        pdf_path, page_start, page_end, dpi, max_tokens,
+        pdf_path,
+        page_start,
+        page_end,
+        dpi,
+        max_tokens,
         progress_callback=progress_callback,
         cancel_check=cancel_check,
     )
