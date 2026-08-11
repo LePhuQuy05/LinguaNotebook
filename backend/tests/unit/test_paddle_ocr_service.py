@@ -6,6 +6,7 @@ external and the bearer token is a secret that must never leave .env.
 """
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -92,9 +93,21 @@ def _done(total_pages: int, jsonl_url: str = "https://example.com/result.jsonl")
     }
 
 
+def _make_pdf(path, pages: int = 2) -> str:
+    """Generate a real (fitz-openable) PDF — chunking inspects page count."""
+    import fitz
+
+    doc = fitz.open()
+    for i in range(pages):
+        page = doc.new_page(width=200, height=200)
+        page.insert_text((20, 40), f"page {i + 1}")
+    doc.save(str(path))
+    doc.close()
+    return str(path)
+
+
 def test_full_job_lifecycle_builds_page_markdown(fake_http, tmp_path):
-    pdf = tmp_path / "doc.pdf"
-    pdf.write_bytes(b"%PDF-1.4 fake")
+    pdf = _make_pdf(tmp_path / "doc.pdf")
 
     client = fake_http(
         get_responses=[
@@ -129,19 +142,19 @@ def test_full_job_lifecycle_builds_page_markdown(fake_http, tmp_path):
     assert post_kwargs["headers"] == {"Authorization": "bearer secret"}
     assert post_kwargs["data"]["model"] == "PaddleOCR-VL-1.6"
     assert client.uploaded["file"][0] == "document.pdf"
-    assert client.uploaded["file"][1] == b"%PDF-1.4 fake"
+    assert client.uploaded["file"][1] == Path(pdf).read_bytes()
 
     # upload phase event first, then extraction mirroring the API's pages
     assert [(p.phase, p.current_page, p.total_pages) for p in progress] == [
         ("uploading", 0, 0),
-        ("extracting", 1, 2),
+        ("extracting", 0, 2),  # pending round
+        ("extracting", 1, 2),  # running round (1 of 2 extracted)
     ]
     assert progress[0].status == "running"
 
 
 def test_failed_job_reports_error_without_raising(fake_http, tmp_path):
-    pdf = tmp_path / "doc.pdf"
-    pdf.write_bytes(b"%PDF")
+    pdf = _make_pdf(tmp_path / "doc.pdf", pages=1)
 
     fake_http(
         get_responses=[
@@ -156,16 +169,14 @@ def test_failed_job_reports_error_without_raising(fake_http, tmp_path):
 
 
 def test_missing_token_raises_before_any_request(fake_http, tmp_path):
-    pdf = tmp_path / "doc.pdf"
-    pdf.write_bytes(b"%PDF")
+    pdf = _make_pdf(tmp_path / "doc.pdf", pages=1)
 
     with pytest.raises(svc.PaddleOcrError, match="PADDLE_OCR_TOKEN"):
         svc.PaddleOcrService(token="").parse_pdf(str(pdf))
 
 
 def test_cancel_stops_polling_with_error(fake_http, tmp_path):
-    pdf = tmp_path / "doc.pdf"
-    pdf.write_bytes(b"%PDF")
+    pdf = _make_pdf(tmp_path / "doc.pdf", pages=1)
 
     fake_http(get_responses=[FakeResponse(json_data={"data": {"state": "running"}})])
 
@@ -215,8 +226,7 @@ def test_line_packing_multiple_layouts_yields_multiple_pages(fake_http, tmp_path
     line=page mapping collapsed 4 pages into one marker and the doc lost
     3/4 of its pages. Each layout result is one page.
     """
-    pdf = tmp_path / "doc.pdf"
-    pdf.write_bytes(b"%PDF")
+    pdf = _make_pdf(tmp_path / "doc.pdf", pages=1)
 
     packed_jsonl = (
         '{"result": {"layoutParsingResults": ['
@@ -240,9 +250,48 @@ def test_line_packing_multiple_layouts_yields_multiple_pages(fake_http, tmp_path
     assert "page A" in markdown and "page E" in markdown
 
 
+def test_large_pdf_is_chunked_and_pages_stay_absolute(fake_http, tmp_path, monkeypatch):
+    """Regression (2026-08-11): the API drops uploads past ~17 min of ingest.
+
+    A 16 MB book died twice with RemoteProtocolError at the 18-minute mark.
+    Files over CHUNK_TARGET_MB split into page-slice jobs; each chunk's
+    markers keep their absolute page numbers.
+    """
+    pdf = tmp_path / "big.pdf"
+    size = len(Path(_make_pdf(pdf, pages=5)).read_bytes())
+    # Force a 2-chunk split: target = half the actual file size.
+    monkeypatch.setattr(svc, "CHUNK_TARGET_MB", (size / 2) / (1024 * 1024))
+
+    chunk1_jsonl = (
+        '{"result": {"layoutParsingResults": [{"markdown": {"text": "c1p1"}}]}}\n'
+        '{"result": {"layoutParsingResults": [{"markdown": {"text": "c1p2"}}]}}\n'
+        '{"result": {"layoutParsingResults": [{"markdown": {"text": "c1p3"}}]}}\n'
+    )
+    chunk2_jsonl = (
+        '{"result": {"layoutParsingResults": [{"markdown": {"text": "c2p4"}}]}}\n'
+        '{"result": {"layoutParsingResults": [{"markdown": {"text": "c2p5"}}]}}\n'
+    )
+    client = fake_http(
+        get_responses=[
+            FakeResponse(json_data={"data": _done(3, "https://example.com/c1.jsonl")}),
+            FakeResponse(json_data={"data": _done(2, "https://example.com/c2.jsonl")}),
+            FakeResponse(text=chunk1_jsonl),
+            FakeResponse(text=chunk2_jsonl),
+        ]
+    )
+
+    markdown, errors = svc.PaddleOcrService(token="t").parse_pdf(str(pdf))
+
+    assert errors == []
+    assert len([c for c in client.calls if c[0] == "post"]) == 2  # two chunk jobs
+    assert markdown.count("--- Page") == 5
+    for n in (1, 2, 3, 4, 5):
+        assert f"--- Page {n} ---" in markdown
+    assert "c1p1" in markdown and "c2p5" in markdown
+
+
 def test_malformed_result_lines_become_errors(fake_http, tmp_path):
-    pdf = tmp_path / "doc.pdf"
-    pdf.write_bytes(b"%PDF")
+    pdf = _make_pdf(tmp_path / "doc.pdf", pages=1)
 
     bad_jsonl = (
         '{"result": {"layoutParsingResults": [{"markdown": {"text": "ok"}}]}}\n'
