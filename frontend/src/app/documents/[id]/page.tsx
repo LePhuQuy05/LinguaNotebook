@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { ArrowLeft, FileText } from "lucide-react";
+import { ArrowLeft, FileText, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { MarkdownContent } from "../../../components/document/MarkdownContent";
 import { ParseProgress } from "../../../components/document/ParseProgress";
+import { EmbedProgress } from "../../../components/document/EmbedProgress";
+import { CurriculumMap } from "../../../components/document/CurriculumMap";
 
 interface ContentBlock {
   id: string;
@@ -23,8 +25,21 @@ interface DocumentDetail {
   status: string;
   parse_method: string | null;
   error_message: string | null;
+  embed_status: string;
+  chunks_count: number | null;
+  embedded_at: string | null;
   created_at: string;
   blocks: ContentBlock[];
+}
+
+interface ChapterStructure {
+  id: string;
+  part: string;
+  chapter_num: number;
+  chapter_title: string;
+  page_start: number;
+  page_end: number;
+  order: number;
 }
 
 const blockColors: Record<string, string> = {
@@ -39,6 +54,7 @@ export default function DocumentViewerPage() {
   const params = useParams();
   const id = params.id as string;
   const [doc, setDoc] = useState<DocumentDetail | null>(null);
+  const [structures, setStructures] = useState<ChapterStructure[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -52,6 +68,13 @@ export default function DocumentViewerPage() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
+
+    fetch(`/api/v1/documents/${id}/structures`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setStructures)
+      .catch(() => setStructures([]));
   }, [id]);
 
   if (loading) {
@@ -105,6 +128,33 @@ export default function DocumentViewerPage() {
           documentId={id}
           onComplete={() => window.location.reload()}
         />
+      )}
+
+      {/* Embed / RAG indexing status */}
+      {doc.embed_status === "embedding" && (
+        <EmbedProgress
+          documentId={id}
+          onComplete={() => window.location.reload()}
+        />
+      )}
+      {doc.embed_status === "embedded" && doc.chunks_count != null && (
+        <div className="flex items-center gap-2 rounded-xl border border-border bg-success-light p-4 text-sm text-success">
+          <Sparkles className="h-4 w-4 shrink-0" />
+          <span>
+            Indexed <strong>{doc.chunks_count}</strong> chunks for semantic
+            search
+            {doc.embedded_at
+              ? ` · ${new Date(doc.embedded_at).toLocaleDateString()}`
+              : ""}
+            .
+          </span>
+        </div>
+      )}
+      {doc.embed_status === "embed_failed" && (
+        <div className="rounded-xl border border-border bg-destructive-light p-4 text-sm text-destructive">
+          Embedding failed — re-upload the document to rebuild the knowledge
+          base.
+        </div>
       )}
 
       {/* Cancelled state */}
@@ -161,6 +211,9 @@ export default function DocumentViewerPage() {
           </p>
         </div>
       )}
+
+      {/* Curriculum map from the book's TOC */}
+      <CurriculumMap structures={structures} />
     </div>
   );
 }

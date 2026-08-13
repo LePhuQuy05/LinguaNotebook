@@ -12,6 +12,8 @@ interface DocumentSummary {
   total_pages: number | null;
   language: string | null;
   status: string;
+  embed_status: string;
+  chunks_count: number | null;
   created_at: string;
 }
 
@@ -50,6 +52,28 @@ export default function DocumentsPage() {
         className={`rounded-full px-2 py-0.5 text-xs font-medium ${colors[status] || colors.uploading}`}
       >
         {status.replace(/_/g, " ")}
+      </span>
+    );
+  };
+
+  const embedBadge = (status: string) => {
+    const colors: Record<string, string> = {
+      pending: "bg-muted text-foreground-muted",
+      embedding: "bg-accent-100 text-accent-700",
+      embedded: "bg-success-light text-success",
+      embed_failed: "bg-destructive-light text-destructive",
+    };
+    const label =
+      status === "embedded"
+        ? "indexed"
+        : status === "embed_failed"
+          ? "index failed"
+          : status.replace(/_/g, " ");
+    return (
+      <span
+        className={`rounded-full px-2 py-0.5 text-xs font-medium ${colors[status] || colors.pending}`}
+      >
+        {label}
       </span>
     );
   };
@@ -113,7 +137,10 @@ export default function DocumentsPage() {
                   {new Date(doc.created_at).toLocaleDateString()}
                 </p>
               </div>
-              {statusBadge(doc.status)}
+              <div className="flex items-center gap-1.5">
+                {statusBadge(doc.status)}
+                {embedBadge(doc.embed_status)}
+              </div>
             </button>
           ))}
         </div>

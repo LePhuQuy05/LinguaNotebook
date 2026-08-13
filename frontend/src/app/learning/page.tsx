@@ -1,18 +1,30 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Flashcard } from "../../components/learning/Flashcard";
 import { ReadingPassage } from "../../components/learning/ReadingPassage";
 import { GrammarExercise } from "../../components/learning/GrammarExercise";
 import { ListeningExercise } from "../../components/learning/ListeningExercise";
+
+interface LessonSource {
+  page_start: number;
+  page_end: number;
+  token_count: number | null;
+  block_type: string;
+  document_id: string;
+  content: string;
+}
 
 interface LessonItem {
   id: string;
   item_type: string;
   order_index: number;
   question: string;
+  correct_answer: string;
   completed: boolean;
   is_correct: boolean | null;
+  source?: LessonSource | null;
 }
 
 interface Lesson {
@@ -20,6 +32,10 @@ interface Lesson {
   date: string;
   status: string;
   score: number | null;
+  document_id: string | null;
+  document_filename: string | null;
+  chapter_num: number | null;
+  chapter_title: string | null;
 }
 
 export default function LearningPage() {
@@ -121,6 +137,26 @@ export default function LearningPage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6 p-6">
+      {/* Source attribution — which book/chapter this lesson comes from */}
+      {lesson.chapter_title && (
+        <div className="rounded-xl border border-border bg-surface p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
+            Today&apos;s chapter
+          </p>
+          <Link
+            href={lesson.document_id ? `/documents/${lesson.document_id}` : "#"}
+            className="mt-1 block font-heading text-lg font-semibold text-foreground transition-colors hover:text-primary-600"
+          >
+            Chapter {lesson.chapter_num} · {lesson.chapter_title}
+          </Link>
+          {lesson.document_filename && (
+            <p className="mt-1 text-sm text-foreground-muted">
+              from {lesson.document_filename}
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Progress bar */}
       <div className="space-y-2">
         <div className="flex justify-between text-sm text-foreground-muted">
@@ -173,6 +209,32 @@ export default function LearningPage() {
             handleNext();
           }}
         />
+      )}
+
+      {/* Source chunk this item was generated from */}
+      {currentItem.source && (
+        <details className="rounded-xl border border-border bg-surface p-4">
+          <summary className="cursor-pointer select-none text-sm font-medium text-foreground-muted">
+            View source
+          </summary>
+          <div className="mt-2 space-y-2 text-sm text-foreground-muted">
+            <p>
+              Pages {currentItem.source.page_start}
+              {currentItem.source.page_end !== currentItem.source.page_start
+                ? `–${currentItem.source.page_end}`
+                : ""}
+              {currentItem.source.token_count
+                ? ` · ${currentItem.source.token_count} tokens`
+                : ""}
+              {currentItem.source.block_type
+                ? ` · ${currentItem.source.block_type}`
+                : ""}
+            </p>
+            <p className="whitespace-pre-wrap rounded bg-muted p-3 text-foreground-muted">
+              {currentItem.source.content}
+            </p>
+          </div>
+        </details>
       )}
     </div>
   );

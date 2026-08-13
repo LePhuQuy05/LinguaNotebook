@@ -69,7 +69,9 @@ export async function queueChange(
 }
 
 export async function getPendingChanges(): Promise<PendingChange[]> {
-  return db.pendingChanges.where("synced").equals(false).toArray();
+  // `synced` is indexed as a boolean, which Dexie's `equals()` typing
+  // rejects — filter in memory instead (queue is small).
+  return db.pendingChanges.filter((c) => !c.synced).toArray();
 }
 
 export async function markSynced(ids: number[]): Promise<void> {
