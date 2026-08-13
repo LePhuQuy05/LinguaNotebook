@@ -1,13 +1,18 @@
 """Lesson service — daily lesson generation and evaluation."""
 
+from __future__ import annotations
+
 import logging
 import random
-from datetime import date
+import re
+from collections import Counter
+from datetime import UTC, date
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models.learning import Lesson, LessonItem, LessonStatus, ItemType
+from src.models.document_structure import DocumentStructure
+from src.models.learning import ItemType, Lesson, LessonItem, LessonStatus
 from src.models.schedule import Schedule
 from src.services.rag_service import hybrid_search
 
@@ -20,6 +25,13 @@ CONTENT_RATIOS = {
     "grammar": 0.20,
     "listening": 0.15,
 }
+
+# Chapter-lesson retrieval: pull 2× the item budget from the chapter so
+# trimming to `total_items` still leaves a book-ordered, non-repeating
+# selection (and never fewer than MIN_RETRIEVAL_LIMIT).
+CHAPTER_LIMIT_FACTOR = 2
+MIN_RETRIEVAL_LIMIT = 10
+LOG_TITLE_WIDTH = 30
 
 
 async def get_or_create_daily_lesson(
@@ -47,7 +59,7 @@ async def get_or_create_daily_lesson(
     schedule_result = await db.execute(
         select(Schedule).where(
             Schedule.user_id == user_id,
-            Schedule.is_active == True,
+            Schedule.is_active,
         )
     )
     schedules = schedule_result.scalars().all()
@@ -60,13 +72,75 @@ async def get_or_create_daily_lesson(
     return await generate_lesson(db, user_id, today_schedules[0], lesson_date)
 
 
+async def _next_chapter(db: AsyncSession, user_id: str) -> DocumentStructure | None:
+    """The next chapter to study, across the user's mapped documents.
+
+    Picks the most-advanced book (most completed chapters), then its
+    lowest-order chapter without a completed lesson. Returns a
+    DocumentStructure row, or None when no document has a map.
+    """
+    from src.models.document import Document
+    from src.models.learning import Lesson as LessonModel
+
+    result = await db.execute(
+        select(DocumentStructure)
+        .join(Document, Document.id == DocumentStructure.document_id)
+        .where(Document.user_id == user_id)
+        .order_by(DocumentStructure.order)
+    )
+    rows = result.scalars().all()
+    if not rows:
+        return None
+
+    lessons = await db.execute(
+        select(LessonModel.document_id, LessonModel.chapter_num).where(
+            LessonModel.user_id == user_id,
+            LessonModel.document_id.is_not(None),
+            LessonModel.status == LessonStatus.completed,
+        )
+    )
+    done = {(d, c) for d, c in lessons.all() if c is not None}
+
+    per_doc = Counter(d for d, _ in done)
+    rows_by_doc: dict[str, list[DocumentStructure]] = {}
+    for row in rows:
+        rows_by_doc.setdefault(row.document_id, []).append(row)
+
+    # Books ordered by progress (most completed chapters first); the first
+    # chapter without a completed lesson wins. If every chapter is done,
+    # recycle the most-advanced book's last chapter.
+    most_advanced = sorted(rows_by_doc, key=lambda d: -per_doc.get(d, 0))
+    for doc_id in most_advanced:
+        for row in rows_by_doc[doc_id]:
+            if (row.document_id, row.chapter_num) not in done:
+                return row
+    return rows_by_doc[most_advanced[0]][-1]
+
+
+def _chapter_query(chapter_title: str) -> str:
+    """Japanese search query from a chapter title.
+
+    Titles carry the English/Chinese gloss after the first Latin letter
+    and often an explanation after a colon (人間関係1：家族と友達、性格).
+    The Japanese topic is the prefix before the first of those; the query
+    is "<topic>の言葉" (BGE-M3 matches Japanese queries best).
+    """
+    jp = re.split(r"[：:A-Za-z]", chapter_title)[0].strip(" ：:　")
+    return f"{jp}の言葉" if jp else "言葉"
+
+
 async def generate_lesson(
     db: AsyncSession,
     user_id: str,
     schedule: Schedule,
     lesson_date: date,
 ) -> Lesson:
-    """Generate a daily lesson from RAG content + SRS reviews."""
+    """Generate a daily lesson from RAG content + SRS reviews.
+
+    Chapter-driven when the user has a document with a curriculum map
+    (one chapter per lesson, vocab + exercises in book order); falls
+    back to the generic content-type retrieval otherwise.
+    """
     lesson = Lesson(
         user_id=user_id,
         schedule_id=schedule.id,
@@ -75,6 +149,77 @@ async def generate_lesson(
     )
     db.add(lesson)
 
+    chapter = await _next_chapter(db, user_id)
+    if chapter is not None:
+        items = await _generate_chapter_lesson(
+            db, user_id, schedule, lesson, chapter
+        )
+        if items:
+            await db.commit()
+            await db.refresh(lesson)
+            return lesson
+        # Empty retrieval (e.g. no chunks indexed yet) — fall through to
+        # the generic path with the chapter attribution cleared.
+        lesson.document_id = None
+        lesson.chapter_num = None
+        lesson.chapter_title = None
+
+    await _generate_generic_lesson(db, user_id, schedule, lesson)
+    await db.commit()
+    await db.refresh(lesson)
+    return lesson
+
+
+async def _generate_chapter_lesson(
+    db: AsyncSession,
+    user_id: str,
+    schedule: Schedule,
+    lesson: Lesson,
+    chapter,
+) -> list[LessonItem]:
+    """Compose items from one curriculum chapter, in book order."""
+    lesson.document_id = chapter.document_id
+    lesson.chapter_num = chapter.chapter_num
+    lesson.chapter_title = chapter.chapter_title
+
+    total_items = schedule.daily_item_count
+    search_results = await hybrid_search(
+        user_id=user_id,
+        query=_chapter_query(chapter.chapter_title),
+        document_id=chapter.document_id,
+        page_start=chapter.page_start,
+        page_end=chapter.page_end,
+        limit=max(total_items * CHAPTER_LIMIT_FACTOR, MIN_RETRIEVAL_LIMIT),
+    )
+    results = sorted(
+        search_results.get("results", []),
+        key=lambda r: (r.get("page_start", 0), r.get("chunk_index", 0)),
+    )
+
+    # Chunks stay in book order; the item type follows the schedule's
+    # content types (round-robin) so a reading/grammar-heavy schedule
+    # isn't silently overridden with vocabulary.
+    item_types = schedule.content_types or ["vocabulary"]
+    items: list[LessonItem] = []
+    for order, sr in enumerate(results[:total_items]):
+        content_type = item_types[order % len(item_types)]
+        item = _create_lesson_item(lesson.id, content_type, sr, order)
+        db.add(item)
+        items.append(item)
+    logger.info(
+        f"Chapter lesson: {chapter.chapter_title[:LOG_TITLE_WIDTH]} (pages "
+        f"{chapter.page_start}-{chapter.page_end}) → {len(items)} items"
+    )
+    return items
+
+
+async def _generate_generic_lesson(
+    db: AsyncSession,
+    user_id: str,
+    schedule: Schedule,
+    lesson: Lesson,
+) -> None:
+    """The original content-type-driven composition (random retrieval)."""
     total_items = schedule.daily_item_count
     items: list[LessonItem] = []
 
@@ -129,10 +274,6 @@ async def generate_lesson(
     random.shuffle(items)
     for i, item in enumerate(items):
         item.order_index = i
-
-    await db.commit()
-    await db.refresh(lesson)
-    return lesson
 
 
 async def answer_item(
@@ -206,8 +347,8 @@ async def complete_lesson(db: AsyncSession, lesson_id: str, user_id: str) -> dic
         lesson.score = 0
 
     lesson.status = LessonStatus.completed
-    from datetime import datetime, timezone
-    lesson.completed_at = datetime.now(timezone.utc)
+    from datetime import datetime
+    lesson.completed_at = datetime.now(UTC)
     await db.commit()
 
     return {
@@ -228,6 +369,17 @@ def _content_type_query(content_type: str) -> str:
     return queries.get(content_type, "learning content")
 
 
+# Schedule content types map onto lesson item types. Vocabulary has no
+# ItemType of its own — it is presented as a recall flashcard
+# ("What does this term mean?").
+_ITEM_TYPE_BY_CONTENT_TYPE: dict[str, ItemType] = {
+    "vocabulary": ItemType.flashcard,
+    "reading": ItemType.reading,
+    "grammar": ItemType.grammar,
+    "listening": ItemType.listening,
+}
+
+
 def _create_lesson_item(
     lesson_id: str,
     content_type: str,
@@ -235,7 +387,7 @@ def _create_lesson_item(
     order: int,
 ) -> LessonItem:
     """Create a lesson item from a RAG search result."""
-    item_type = ItemType(content_type)
+    item_type = _ITEM_TYPE_BY_CONTENT_TYPE.get(content_type, ItemType.flashcard)
     content = search_result.get("content", "")
     chunk_id = search_result.get("chunk_id")
 

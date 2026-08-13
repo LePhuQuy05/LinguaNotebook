@@ -31,6 +31,11 @@ class Lesson(Base):
     schedule_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("schedules.id"), nullable=True
     )
+    document_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("documents.id"), nullable=True, index=True
+    )
+    chapter_num: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    chapter_title: Mapped[str | None] = mapped_column(String(500), nullable=True)
     date: Mapped[date] = mapped_column(Date, nullable=False)
     status: Mapped[LessonStatus] = mapped_column(
         Enum(LessonStatus), nullable=False, default=LessonStatus.pending
