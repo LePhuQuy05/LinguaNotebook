@@ -5,7 +5,10 @@ from qdrant_client.models import Distance, VectorParams, SparseVectorParams
 
 from src.core.config import settings
 
-qdrant_client = QdrantClient(url=settings.qdrant_url)
+# Generous timeout: a bulk upsert of a full book's chunks (1000+ points of
+# 1024-dim dense + BM25 sparse vectors) exceeds the client's default and
+# fails with "ResponseHandlingException: timed out".
+qdrant_client = QdrantClient(url=settings.qdrant_url, timeout=120)
 
 COLLECTION_PREFIX = "user_"
 VECTOR_SIZE = 1024  # BGE-M3 embedding dimension

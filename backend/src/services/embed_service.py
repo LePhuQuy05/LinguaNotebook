@@ -15,6 +15,10 @@ logger = logging.getLogger(__name__)
 _dense_model: SentenceTransformer | None = None
 _sparse_model: SparseTextEmbedding | None = None
 
+# Points per upsert call — keeps each HTTP request small enough to finish
+# inside the client timeout.
+UPSERT_BATCH_SIZE = 200
+
 
 def _get_dense_model() -> SentenceTransformer:
     global _dense_model
@@ -98,6 +102,12 @@ async def embed_and_index_chunks(
             },
         })
 
-    qdrant_client.upsert(collection_name=collection_name, points=points)
+    # Batch the upsert: one call for a whole book times out the HTTP
+    # connection even with a generous client timeout.
+    for i in range(0, len(points), UPSERT_BATCH_SIZE):
+        qdrant_client.upsert(
+            collection_name=collection_name,
+            points=points[i : i + UPSERT_BATCH_SIZE],
+        )
     logger.info(f"Indexed {len(points)} chunks for user {user_id}, document {document_id}")
     return len(points)
