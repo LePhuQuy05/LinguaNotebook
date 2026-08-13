@@ -4,15 +4,17 @@
 
 **Blocked by:** 01 (blocks must be clean before indexing)
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
-- [ ] `parse_pdf_task` dispatches `embed_document` after blocks are saved (only when parse succeeded)
-- [ ] Embed worker runs chunk + embed + upsert on the persistent event loop — two documents processed sequentially in one worker process both succeed
-- [ ] E2E: parse a scanned PDF → Qdrant collection has points → `hybrid_search` returns results with content
-- [ ] Regression test: `embed_worker` uses the same loop identity pattern as `parse_worker` (loop never closed)
-- [ ] Worker log reports blocks → chunks indexed
+- [x] `parse_pdf_task` dispatches `embed_document` after blocks are saved (only when parse succeeded)
+- [x] Embed worker runs chunk + embed + upsert on the persistent event loop — two documents processed sequentially in one worker process both succeed
+- [x] E2E: parse a scanned PDF → Qdrant collection has points → `hybrid_search` returns results with content
+- [x] Regression test: `embed_worker` uses the same loop identity pattern as `parse_worker` (loop never closed)
+- [x] Worker log reports blocks → chunks indexed
 
 ## Comments
+
+2026-08-14 — completed, live-verified. Embed dispatch is wired in `parse_worker._dispatch_embed`; the embed worker runs on the shared persistent loop and now publishes Redis `embed:progress:<doc_id>` frames (initial, per-batch, final) and persists `embed_status`/`chunks_count`/`embedded_at` on the `Document`. Real doc `16116abe` (3693 blocks): 2545 Qdrant points, `hybrid_search` returns page-accurate hits. Tests: `test_embed_worker.py` (loop identity, status writes on success/failure, Redis frames), `test_embed_service.py` (progress callback per batch).
 
 2026-08-13 — Implemented + committed (1825bbe): parse_worker dispatches
 `embed_document_task.delay(document_id=..., user_id=None)` after blocks save;

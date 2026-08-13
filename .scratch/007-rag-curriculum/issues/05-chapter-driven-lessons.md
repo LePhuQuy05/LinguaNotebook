@@ -4,16 +4,18 @@
 
 **Blocked by:** 03, 04
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
-- [ ] Lesson generation walks the curriculum map (schedule → next chapter after the last completed one)
-- [ ] Search query derived from the chapter topic in Japanese (e.g. weather chapter → 天気-related query)
-- [ ] `hybrid_search` called with the chapter's document_id + page-range filter
-- [ ] Items composed from the same section: vocab entries and their exercises stay together; item order follows the chapter's page order
-- [ ] No curriculum map / no schedule → falls back to current random-retrieval behavior
-- [ ] Unit tests: lesson items' source pages all fall inside the chosen chapter's range
+- [x] Lesson generation walks the curriculum map (schedule → next chapter after the last completed one)
+- [x] Search query derived from the chapter topic in Japanese (e.g. weather chapter → 天気-related query)
+- [x] `hybrid_search` called with the chapter's document_id + page-range filter
+- [x] Items composed from the same section: vocab entries and their exercises stay together; item order follows the chapter's page order
+- [x] No curriculum map / no schedule → falls back to current random-retrieval behavior
+- [x] Unit tests: lesson items' source pages all fall inside the chosen chapter's range
 
 ## Comments
+
+2026-08-14 — completed, live-verified. `/lessons/daily` now attributes the lesson to its chapter (`document_id`, `chapter_num`, `chapter_title`, `document_filename`), and every item carries a `source` block (page_start/page_end/token_count/block_type/content) resolved from the Qdrant point id via `rag_service.get_chunk_sources` (extracted from the route handler to a testable service seam). Items also now include `correct_answer`, which the flashcard reveal needs (previously omitted from the daily response). Live: chapter 1 `人間関係1：家族と友達、性格`, 5 items all sourced from page 3. Tests: `test_lesson_service.py` (chapter walk, page-scoped retrieval, fallback), `test_rag_service.py::TestGetChunkSources`.
 
 2026-08-13 — Implemented, 11 unit tests green, two-axis code review applied:
 `_next_chapter` (most-advanced book first, recycle last when all done),
