@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import get_db
 from src.core.dependencies import get_current_user_id
-from src.services import schedule_service, lesson_service
+from src.services import lesson_service, rag_service, schedule_service
 
 router = APIRouter(prefix="/api/v1", tags=["Learning"])
 
@@ -103,11 +103,25 @@ async def daily_lesson(
 
     # Load items
     from sqlalchemy import select
+
     from src.models.learning import LessonItem
     items_result = await db.execute(
         select(LessonItem).where(LessonItem.lesson_id == lesson.id).order_by(LessonItem.order_index)
     )
     items = items_result.scalars().all()
+
+    # Source book filename for the chapter-attribution banner
+    document_filename = None
+    if lesson.document_id:
+        from src.models.document import Document
+        src_doc = (
+            await db.execute(select(Document).where(Document.id == lesson.document_id))
+        ).scalar_one_or_none()
+        document_filename = src_doc.filename if src_doc else None
+
+    # Batch-fetch each item's source chunk from Qdrant (point id → payload)
+    source_ids = [i.knowledge_segment_id for i in items if i.knowledge_segment_id]
+    item_sources = rag_service.get_chunk_sources(user_id, source_ids)
 
     return {
         "lesson": {
@@ -115,6 +129,10 @@ async def daily_lesson(
             "date": lesson.date.isoformat(),
             "status": lesson.status.value,
             "score": lesson.score,
+            "document_id": lesson.document_id,
+            "document_filename": document_filename,
+            "chapter_num": lesson.chapter_num,
+            "chapter_title": lesson.chapter_title,
         },
         "items": [
             {
@@ -122,8 +140,10 @@ async def daily_lesson(
                 "item_type": i.item_type.value,
                 "order_index": i.order_index,
                 "question": i.question,
+                "correct_answer": i.correct_answer,
                 "completed": i.completed,
                 "is_correct": i.is_correct,
+                "source": item_sources.get(i.knowledge_segment_id),
             }
             for i in items
         ],

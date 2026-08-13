@@ -2,14 +2,20 @@
 
 import logging
 
-from qdrant_client.models import FieldCondition, Filter, MatchValue, Range
+from qdrant_client.models import (
+    FieldCondition,
+    Filter,
+    Fusion,
+    FusionQuery,
+    MatchValue,
+    Prefetch,
+    Range,
+)
 
 from src.core.qdrant import ensure_collection, get_collection_name, qdrant_client
 from src.services.embed_service import generate_embeddings, generate_sparse_vectors
 
 logger = logging.getLogger(__name__)
-
-RRF_K = 60
 
 # Qdrant Range bounds must be concrete. When only one of page_start /
 # page_end is given, the other side is clamped to these sentinels
@@ -68,51 +74,75 @@ async def hybrid_search(
     dense_vector = generate_embeddings([query])[0]
     sparse_vector = generate_sparse_vectors([query])[0]
 
-    # Dense search
-    dense_results = qdrant_client.search(
+    # Hybrid search: dense + sparse prefetches fused server-side with RRF.
+    # qdrant-client >=1.15 removed `search` in favour of `query_points` with
+    # prefetch + FusionQuery — one round-trip, fusion done by Qdrant.
+    resp = qdrant_client.query_points(
         collection_name=collection_name,
-        query_vector=("dense", dense_vector),
-        query_filter=query_filter,
-        limit=limit * 2,
+        prefetch=[
+            Prefetch(
+                query=dense_vector,
+                using="dense",
+                filter=query_filter,
+                limit=limit * 2,
+            ),
+            Prefetch(
+                query=sparse_vector,
+                using="sparse",
+                filter=query_filter,
+                limit=limit * 2,
+            ),
+        ],
+        query=FusionQuery(fusion=Fusion.RRF),
+        limit=limit,
+        with_payload=True,
     )
-
-    # Sparse search
-    sparse_results = qdrant_client.search(
-        collection_name=collection_name,
-        query_vector=("sparse", sparse_vector),
-        query_filter=query_filter,
-        limit=limit * 2,
-    )
-
-    # RRF fusion
-    scores: dict[str, float] = {}
-    payloads: dict[str, dict] = {}
-    for rank, hit in enumerate(dense_results):
-        rid = str(hit.id)
-        scores[rid] = scores.get(rid, 0) + 1.0 / (RRF_K + rank + 1)
-        payloads[rid] = hit.payload or {}
-    for rank, hit in enumerate(sparse_results):
-        rid = str(hit.id)
-        scores[rid] = scores.get(rid, 0) + 1.0 / (RRF_K + rank + 1)
-        payloads[rid] = hit.payload or {}
-
-    # Sort by fused score
-    ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:limit]
 
     results = []
-    for point_id, score in ranked:
-        payload = payloads.get(point_id, {})
+    for hit in resp.points:
+        payload = hit.payload or {}
         results.append({
-            "chunk_id": point_id,
+            "chunk_id": str(hit.id),
             "content": payload.get("content", ""),
             "document_id": payload.get("document_id", ""),
             "block_type": payload.get("block_type", ""),
             "language": payload.get("language", ""),
             "difficulty": payload.get("difficulty", ""),
             "page_start": payload.get("page_start", 0),
+            "page_end": payload.get("page_end", payload.get("page_start", 0)),
             "chunk_index": payload.get("chunk_index", 0),
-            "score": round(score, 4),
+            "token_count": payload.get("token_count"),
+            "score": round(hit.score, 4),
         })
 
     took_ms = (time.time() - t0) * 1000
     return {"results": results, "took_ms": round(took_ms, 2)}
+
+
+def get_chunk_sources(user_id: str, source_ids: list[str]) -> dict[str, dict]:
+    """Fetch Qdrant payloads by point id and shape them for lesson-source
+    attribution (page range, token count, block type, content).
+
+    Used by the daily-lesson endpoint to show where each item came from.
+    Unknown ids are simply absent from the result.
+    """
+    if not source_ids:
+        return {}
+    points = qdrant_client.retrieve(
+        collection_name=get_collection_name(user_id),
+        ids=source_ids,
+        with_payload=True,
+        with_vectors=False,
+    )
+    sources = {}
+    for p in points:
+        payload = p.payload or {}
+        sources[p.id] = {
+            "page_start": payload.get("page_start"),
+            "page_end": payload.get("page_end", payload.get("page_start")),
+            "token_count": payload.get("token_count"),
+            "block_type": payload.get("block_type", ""),
+            "document_id": payload.get("document_id", ""),
+            "content": payload.get("content", ""),
+        }
+    return sources

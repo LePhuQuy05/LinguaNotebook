@@ -3,12 +3,10 @@
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.config import settings
 from src.core.redis import redis_client
 from src.core.storage import upload_file
 from src.models.document import Document, DocumentStatus
@@ -17,6 +15,9 @@ logger = logging.getLogger(__name__)
 
 REDIS_PROGRESS_PREFIX = "parse:progress:"
 REDIS_PROGRESS_TTL = 3600  # 1 hour
+
+REDIS_EMBED_PROGRESS_PREFIX = "embed:progress:"
+REDIS_EMBED_PROGRESS_TTL = 3600  # 1 hour
 
 
 async def create_document(
@@ -198,3 +199,12 @@ async def set_parse_progress(document_id: str, progress: dict) -> None:
     """Write parse progress to Redis."""
     key = f"{REDIS_PROGRESS_PREFIX}{document_id}"
     await redis_client.setex(key, REDIS_PROGRESS_TTL, json.dumps(progress))
+
+
+async def get_embed_progress(document_id: str) -> dict:
+    """Read embed progress from Redis (mirrors get_parse_progress)."""
+    key = f"{REDIS_EMBED_PROGRESS_PREFIX}{document_id}"
+    data = await redis_client.get(key)
+    if data is None:
+        return {"status": "unknown", "current_chunks": 0, "total_chunks": 0}
+    return json.loads(data)

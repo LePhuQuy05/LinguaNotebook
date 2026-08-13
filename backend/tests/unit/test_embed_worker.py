@@ -9,6 +9,7 @@ parse worker dispatches without it.
 """
 
 import asyncio
+import json
 import types
 
 import pytest
@@ -74,27 +75,45 @@ class FakeSession:
             return FakeResult(self._doc)
         return FakeResult(self._blocks)
 
+    async def commit(self):
+        pass
+
 
 @pytest.fixture
 def env(monkeypatch):
-    """Install a fake session factory + embed/index recorder."""
-    state = {"indexed": [], "loops": []}
+    """Install a fake session factory + embed/index recorder + fake Redis.
+
+    One ``FakeDoc`` instance is shared across every session the worker
+    opens, so the ``embed_status``/``chunks_count`` writes in the success
+    and failure paths land on the same object we can inspect.
+    """
+    state = {"indexed": [], "loops": [], "redis_writes": []}
+    doc = FakeDoc()
 
     def fake_factory():
-        session = FakeSession(FakeDoc(), [FakeBlock("b1", "テキスト")], state["loops"])
+        session = FakeSession(doc, [FakeBlock("b1", "テキスト")], state["loops"])
         state["session"] = session
         return session
 
-    async def fake_embed_and_index(user_id, document_id, chunks):
+    async def fake_embed_and_index(user_id, document_id, chunks, *, progress_callback=None):
         state["indexed"].append({
             "user_id": user_id,
             "document_id": document_id,
             "chunks": chunks,
         })
+        if progress_callback:
+            await progress_callback(
+                {"status": "embedding", "current_chunks": 1, "total_chunks": len(chunks)}
+            )
         return len(chunks)
+
+    class FakeRedis:
+        async def setex(self, key, ttl, value):
+            state["redis_writes"].append({"key": key, "value": json.loads(value)})
 
     monkeypatch.setattr("src.core.database.AsyncSessionLocal", fake_factory)
     monkeypatch.setattr(ew, "embed_and_index_chunks", fake_embed_and_index)
+    monkeypatch.setattr(ew, "redis_client", FakeRedis())
     return state
 
 
@@ -137,3 +156,40 @@ def test_missing_document_skips(env, monkeypatch):
 
     assert result["status"] == "skipped"
     assert env["indexed"] == []
+
+
+def test_success_sets_status_and_publishes_progress(env):
+    result = ew.embed_document_task(document_id="doc-1", user_id="user-9")
+
+    assert result["status"] == "completed"
+    doc = env["session"]._doc
+    assert doc.embed_status.value == "embedded"
+    assert doc.chunks_count >= 1
+    assert doc.embedded_at is not None
+
+    # Redis frames: initial embedding, intermediate batch, final embedded.
+    keys = [w["key"] for w in env["redis_writes"]]
+    assert keys and all(k == "embed:progress:doc-1" for k in keys)
+    frames = [w["value"] for w in env["redis_writes"]]
+    assert frames[0]["status"] == "embedding"
+    assert frames[0]["current_chunks"] == 0
+    assert any(f["status"] == "embedding" and f["current_chunks"] == 1 for f in frames)
+    assert frames[-1]["status"] == "embedded"
+    assert frames[-1]["chunks_indexed"] == doc.chunks_count
+
+
+def test_failure_sets_embed_failed_and_publishes(env, monkeypatch):
+    async def boom(user_id, document_id, chunks, **kwargs):
+        raise RuntimeError("embed exploded")
+
+    monkeypatch.setattr(ew, "embed_and_index_chunks", boom)
+
+    with pytest.raises(RuntimeError, match="embed exploded"):
+        ew.embed_document_task(document_id="doc-1", user_id="user-9")
+
+    doc = env["session"]._doc
+    assert doc.embed_status.value == "embed_failed"
+
+    last = env["redis_writes"][-1]["value"]
+    assert last["status"] == "embed_failed"
+    assert "embed exploded" in last["error"]

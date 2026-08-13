@@ -4,7 +4,7 @@ import enum
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, DateTime, Enum, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import JSON, BigInteger, DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.core.database import Base
@@ -27,6 +27,15 @@ class BlockType(str, enum.Enum):
     image_caption = "image_caption"
 
 
+class EmbedStatus(str, enum.Enum):
+    """Lifecycle of the RAG embedding/indexing phase for a document."""
+
+    pending = "pending"
+    embedding = "embedding"
+    embedded = "embedded"
+    embed_failed = "embed_failed"
+
+
 class Document(Base):
     __tablename__ = "documents"
 
@@ -45,6 +54,11 @@ class Document(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     parse_method: Mapped[str | None] = mapped_column(String(50), nullable=True)
     parsed_content_path: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    embed_status: Mapped[EmbedStatus] = mapped_column(
+        Enum(EmbedStatus), nullable=False, default=EmbedStatus.pending
+    )
+    chunks_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    embedded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

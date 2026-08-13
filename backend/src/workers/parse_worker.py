@@ -146,6 +146,44 @@ def _save_content_blocks(document_id: str, markdown: str, errors: list, method: 
     _get_event_loop().run_until_complete(_run())
 
 
+def _save_curriculum_structure(document_id: str, markdown: str) -> None:
+    """Extract the TOC-based curriculum map and persist DocumentStructure rows.
+
+    Conservative by design: unknown structure → empty map, nothing written.
+    Idempotent per document: existing rows are replaced on re-parse.
+    """
+    from sqlalchemy import delete
+
+    from src.core.database import AsyncSessionLocal
+    from src.models.document_structure import DocumentStructure
+    from src.services.curriculum_service import extract_curriculum
+
+    async def _run():
+        rows = extract_curriculum(markdown)
+        if not rows:
+            return
+        async with AsyncSessionLocal() as db:
+            await db.execute(
+                delete(DocumentStructure).where(DocumentStructure.document_id == document_id)
+            )
+            for i, row in enumerate(rows):
+                db.add(
+                    DocumentStructure(
+                        document_id=document_id,
+                        part=row["part"],
+                        chapter_num=row["chapter_num"],
+                        chapter_title=row["chapter_title"],
+                        page_start=row["page_start"],
+                        page_end=row["page_end"],
+                        order=i,
+                    )
+                )
+            await db.commit()
+        logger.info(f"Saved {len(rows)} curriculum rows for document {document_id}")
+
+    _get_event_loop().run_until_complete(_run())
+
+
 @celery_app.task(name="parse_pdf", bind=True, max_retries=3)
 def parse_pdf_task(
     self,
@@ -266,6 +304,13 @@ def parse_pdf_task(
                 ),
             )
             return {"status": "completed", "document_id": document_id, "errors": len(errors)}
+
+        # Curriculum map from the book's TOC. Best effort: no map → empty,
+        # never a parse failure.
+        try:
+            _save_curriculum_structure(document_id, combined_markdown)
+        except Exception as struct_err:
+            logger.error(f"Failed to save curriculum structure for {document_id}: {struct_err}")
 
         # Chunk + embed + index into Qdrant. Best effort: an embed failure
         # must not fail the parse — the doc is already saved and viewable.

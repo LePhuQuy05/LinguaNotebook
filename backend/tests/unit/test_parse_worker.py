@@ -145,6 +145,78 @@ class TestSaveContentBlocks:
         assert sessions["doc"].parse_method == "ocr"
 
 
+class TestSaveCurriculumStructure:
+    """TOC extraction wiring — rows are replaced on re-parse, never merged,
+    and an absent map writes nothing (conservative by design)."""
+
+    class CurriculumSession:
+        def __init__(self):
+            self.added = []
+            self.deletes = 0
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def execute(self, statement):
+            from sqlalchemy import Delete
+
+            if isinstance(statement, Delete):
+                self.deletes += 1
+            return FakeResult(None)
+
+        def add(self, obj):
+            self.added.append(obj)
+
+        async def commit(self):
+            pass
+
+    @pytest.fixture
+    def curriculum_env(self, worker, monkeypatch):
+        """Patch the session factory at its source, after `worker`'s patch,
+        so ours wins; return the worker module too."""
+        pw, _ = worker
+        session = self.CurriculumSession()
+        monkeypatch.setattr("src.core.database.AsyncSessionLocal", lambda: session)
+        return pw, session
+
+    def test_replaces_rows_on_reparse(self, monkeypatch, curriculum_env):
+        pw, session = curriculum_env
+        monkeypatch.setattr(
+            "src.services.curriculum_service.extract_curriculum",
+            lambda markdown: [
+                {"part": "第1部", "chapter_num": 1, "chapter_title": "人・体",
+                 "page_start": 2, "page_end": 5},
+                {"part": "第1部", "chapter_num": 2, "chapter_title": "天気",
+                 "page_start": 6, "page_end": 9},
+            ],
+        )
+
+        pw._save_curriculum_structure("doc-1", "any markdown")
+
+        # old rows deleted first, then fresh rows with book order
+        assert session.deletes == 1
+        assert len(session.added) == 2
+        assert [r.order for r in session.added] == [0, 1]
+        assert session.added[0].chapter_num == 1
+        assert session.added[0].document_id == "doc-1"
+        assert session.added[0].page_end == 5
+
+    def test_empty_map_writes_nothing(self, monkeypatch, curriculum_env):
+        pw, session = curriculum_env
+        monkeypatch.setattr(
+            "src.services.curriculum_service.extract_curriculum",
+            lambda markdown: [],
+        )
+
+        pw._save_curriculum_structure("doc-1", "no toc here")
+
+        assert session.deletes == 0
+        assert session.added == []
+
+
 class TestPersistentEventLoop:
     """Regression: saves must run on one loop that lives for the process.
 

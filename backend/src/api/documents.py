@@ -4,16 +4,16 @@ import asyncio
 import json
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Request
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import get_db
 from src.core.dependencies import get_current_user_id
 from src.core.security import decode_token
-from src.services import parser_service as svc
 from src.models.document import Document, DocumentStatus
+from src.services import parser_service as svc
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/documents", tags=["Documents"])
@@ -76,6 +76,9 @@ async def list_documents(
         "items": [{"id": d.id, "filename": d.filename, "file_size_bytes": d.file_size_bytes,
                     "total_pages": d.total_pages, "language": d.language,
                     "status": d.status.value, "parse_method": d.parse_method,
+                    "embed_status": d.embed_status.value,
+                    "chunks_count": d.chunks_count,
+                    "embedded_at": d.embedded_at.isoformat() if d.embedded_at else None,
                     "created_at": d.created_at.isoformat()} for d in docs],
         "total": total, "page": page,
     }
@@ -108,6 +111,9 @@ async def get_document(
         "total_pages": doc.total_pages, "language": doc.language,
         "status": doc.status.value, "parse_method": doc.parse_method,
         "error_message": doc.error_message,
+        "embed_status": doc.embed_status.value,
+        "chunks_count": doc.chunks_count,
+        "embedded_at": doc.embedded_at.isoformat() if doc.embedded_at else None,
         "created_at": doc.created_at.isoformat(),
         "blocks": [{"id": b.id, "page_number": b.page_number, "block_type": b.block_type.value,
                      "content_markdown": b.content_markdown, "bbox": b.bbox} for b in blocks],
@@ -215,12 +221,74 @@ async def parse_progress_poll(
     return progress
 
 
+@router.get("/{document_id}/embed/progress/poll")
+async def embed_progress_poll(
+    document_id: str,
+    token: str | None = Query(None),
+):
+    """Polling endpoint for embed/indexing progress — JSON (mirrors parse progress)."""
+    # Auth via token query param (EventSource/plain fetch can't always set headers)
+    if token:
+        try:
+            payload = decode_token(token)
+            if payload.get("type") != "access":
+                token = None
+        except Exception:
+            token = None
+
+    progress = await svc.get_embed_progress(document_id)
+    if not progress or not progress.get("status"):
+        return {"status": "waiting", "current_chunks": 0, "total_chunks": 0}
+
+    return progress
+
+
+@router.get("/{document_id}/structures")
+async def get_document_structures(
+    document_id: str,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the document's curriculum map (chapters from the book's TOC)."""
+    from src.models.document_structure import DocumentStructure
+
+    doc = (
+        await db.execute(
+            select(Document).where(Document.id == document_id, Document.user_id == user_id)
+        )
+    ).scalar_one_or_none()
+    if not doc:
+        raise HTTPException(404, "Document not found")
+
+    rows = (
+        await db.execute(
+            select(DocumentStructure)
+            .where(DocumentStructure.document_id == document_id)
+            .order_by(DocumentStructure.order)
+        )
+    ).scalars().all()
+
+    return [
+        {
+            "id": s.id,
+            "part": s.part,
+            "chapter_num": s.chapter_num,
+            "chapter_title": s.chapter_title,
+            "page_start": s.page_start,
+            "page_end": s.page_end,
+            "order": s.order,
+        }
+        for s in rows
+    ]
+
+
 @router.post("/{document_id}/parse/cancel")
 async def cancel_parse(document_id: str):
     """Cancel a running parse job and update document status."""
-    from src.core.redis import sync_redis_client as redis
+    from sqlalchemy import select
+
     from src.core.database import AsyncSessionLocal
-    from sqlalchemy import select, update
+    from src.core.redis import sync_redis_client as redis
     from src.models.document import Document, DocumentStatus
 
     redis.setex(f"parse:cancel:{document_id}", 3600, "1")

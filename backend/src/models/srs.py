@@ -14,7 +14,9 @@ class SRSCard(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
-    knowledge_segment_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("knowledge_segments.id"), nullable=True)
+    # Holds a Qdrant point id (external), not a row in `knowledge_segments` —
+    # that Postgres table is unused since chunks moved to Qdrant.
+    knowledge_segment_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     front: Mapped[str] = mapped_column(Text, nullable=False)
     back: Mapped[str] = mapped_column(Text, nullable=False)
     ease_factor: Mapped[float] = mapped_column(Float, default=2.5)

@@ -59,8 +59,10 @@ class LessonItem(Base):
     lesson_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("lessons.id"), nullable=False, index=True
     )
+    # Holds a Qdrant point id (external), not a row in `knowledge_segments` —
+    # that Postgres table is unused since chunks moved to Qdrant.
     knowledge_segment_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("knowledge_segments.id"), nullable=True
+        String(36), nullable=True
     )
     item_type: Mapped[ItemType] = mapped_column(Enum(ItemType), nullable=False)
     order_index: Mapped[int] = mapped_column(Integer, nullable=False)

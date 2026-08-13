@@ -56,3 +56,8 @@ audio_cache/
 *.mp3
 *.wav
 sqlmap-tool/
+
+# Test/build artifacts
+.coverage
+*.tsbuildinfo
+worker.log

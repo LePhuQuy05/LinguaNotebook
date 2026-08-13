@@ -2,6 +2,7 @@
 
 import logging
 import uuid
+from collections.abc import Awaitable, Callable
 
 from fastembed import SparseTextEmbedding
 from sentence_transformers import SentenceTransformer
@@ -66,10 +67,15 @@ async def embed_and_index_chunks(
     user_id: str,
     document_id: str,
     chunks: list[Chunk],
+    *,
+    progress_callback: Callable[[dict], Awaitable[None]] | None = None,
 ) -> int:
     """Embed chunks and upsert to user's Qdrant collection.
 
-    Returns number of indexed points.
+    Returns number of indexed points. ``progress_callback`` (if given) is
+    awaited with ``{"status", "current_chunks", "total_chunks"}`` once
+    before the upsert loop and once after each batch — the caller (e.g.
+    the embed worker) uses it to publish Redis progress.
     """
     if not chunks:
         return 0
@@ -104,10 +110,22 @@ async def embed_and_index_chunks(
 
     # Batch the upsert: one call for a whole book times out the HTTP
     # connection even with a generous client timeout.
+    total = len(points)
+    if progress_callback:
+        await progress_callback({"status": "embedding", "current_chunks": 0, "total_chunks": total})
     for i in range(0, len(points), UPSERT_BATCH_SIZE):
+        batch = points[i : i + UPSERT_BATCH_SIZE]
         qdrant_client.upsert(
             collection_name=collection_name,
-            points=points[i : i + UPSERT_BATCH_SIZE],
+            points=batch,
         )
-    logger.info(f"Indexed {len(points)} chunks for user {user_id}, document {document_id}")
-    return len(points)
+        if progress_callback:
+            await progress_callback(
+                {
+                    "status": "embedding",
+                    "current_chunks": min(i + len(batch), total),
+                    "total_chunks": total,
+                }
+            )
+    logger.info(f"Indexed {total} chunks for user {user_id}, document {document_id}")
+    return total
