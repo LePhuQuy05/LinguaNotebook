@@ -43,9 +43,11 @@ export function CurriculumMap({ structures }: CurriculumMapProps) {
 
       {parts.map((part) => (
         <div key={part.part} className="space-y-2">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-foreground-muted">
-            {part.part}
-          </h3>
+          {part.part && (
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-foreground-muted">
+              {part.part}
+            </h3>
+          )}
           <div className="overflow-hidden rounded-lg border border-border">
             <table className="w-full text-sm">
               <thead className="bg-muted text-left text-xs uppercase text-foreground-muted">
