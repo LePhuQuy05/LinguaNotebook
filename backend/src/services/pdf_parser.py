@@ -1,8 +1,14 @@
-"""Single-route PDF parser — auto-detects text layer.
+"""Single-route PDF parser — OCR for every document.
 
-For PDFs with embedded text: PyMuPDF extraction (instant, 100% accurate)
-For scanned/image-based PDFs: OCR — PaddleOCR-VL cloud API or local HPD,
-selected by the OCR_BACKEND setting (see src.core.config).
+Every PDF is OCR'd (PaddleOCR-VL cloud API or local HPD, selected by the
+OCR_BACKEND setting). The embedded text layer is deliberately never used
+for routing (decision 2026-08-14): the LinguaNotebook collection is
+scanned Japanese textbooks whose baked-in "text layers" are frequently a
+bad OCR (mojibake, "ililil", glued kana readings). A garbage gate was
+added to catch those, but a stale worker still routed one book through
+PyMuPDF and its garbage read as a parse bug — OCR-everything removes that
+failure mode entirely. ``_has_text_layer``/``extract_text_pymupdf`` stay
+callable for manual use on genuinely digital PDFs.
 
 The Marker and hybrid (HPD + Qwen-VL re-parse) branches were removed:
 the 2026-08-01 parse proved hybrid was a silent no-op that doubled parse
@@ -207,7 +213,15 @@ def parse_pdf_hybrid(
     progress_callback: Callable | None = None,
     cancel_check: Callable[[], bool] | None = None,
 ) -> tuple[str, list[tuple[int, str]], str]:
-    """Parse a PDF: text layer → PyMuPDF, else the configured OCR backend.
+    """Parse a PDF through the configured OCR backend — always.
+
+    Every document is OCR'd, even when the PDF carries an embedded text
+    layer (decision 2026-08-14). The LinguaNotebook collection is scanned
+    Japanese textbooks whose baked-in "text layers" are frequently a bad
+    OCR (mojibake, "ililil", glued kana readings); the earlier routing
+    once trusted one such layer and extracted garbage that read as a
+    parse bug. ``_has_text_layer``/``extract_text_pymupdf`` stay callable
+    for manual use on genuinely digital PDFs.
 
     The `mode` parameter is accepted for backward compatibility with older
     API clients and queued Celery tasks, but is always ignored — the Marker
@@ -219,25 +233,13 @@ def parse_pdf_hybrid(
     when a token is configured, else local.
 
     Returns (markdown_text, errors, method_used) where method_used is
-    "text_layer" or "ocr".
+    always "ocr".
     """
-    # Check if PDF has embedded text
-    if _has_text_layer(pdf_path):
-        logger.info("Using PyMuPDF text extraction (text-based PDF)")
-        markdown, errors = extract_text_pymupdf(
-            pdf_path,
-            page_start,
-            page_end,
-            progress_callback=progress_callback,
-            cancel_check=cancel_check,
-        )
-        return markdown, errors, "text_layer"
-
-    # Image-based PDF — configured OCR backend
+    # Configured OCR backend (never the embedded text layer)
     if _ocr_backend() == "paddle":
         from src.services.paddle_ocr_service import PaddleOcrService
 
-        logger.info("Using PaddleOCR-VL cloud API (image-based PDF)")
+        logger.info("Using PaddleOCR-VL cloud API")
         markdown, errors = PaddleOcrService().parse_pdf(
             pdf_path,
             page_start,
@@ -249,7 +251,7 @@ def parse_pdf_hybrid(
         )
         return markdown, errors, "ocr"
 
-    logger.info("Using HPD OCR (image-based PDF)")
+    logger.info("Using HPD OCR")
     from src.core.config import settings as _settings
     from src.utils.hpd_parser import HPDFParser
 

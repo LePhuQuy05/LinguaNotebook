@@ -1,11 +1,14 @@
 """Parse routing tests — the single OCR route (spec 006, ticket 04).
 
-Guards the ticket's core acceptance: parse routing has exactly two branches
-(text layer → PyMuPDF, otherwise → OCR backend) and no Marker/hybrid/Qwen-VL
-branch is reachable — whatever the (compat-only) `mode` parameter carries.
-The OCR backend itself is config-switchable: local HPD vs PaddleOCR-VL cloud
-(OCR_BACKEND setting) — routing tests pin the backend so they never touch
-the network or torch.
+Guards the ticket's core acceptance: parse routing has exactly one branch —
+the configured OCR backend — and no Marker/hybrid/Qwen-VL branch is
+reachable, whatever the (compat-only) `mode` parameter carries. The embedded
+text layer is never consulted for routing (decision 2026-08-14: the scanned
+textbooks' baked-in "text layers" are untrusted); `_has_text_layer` and
+`extract_text_pymupdf` remain callable as manual utilities and are tested
+directly. The OCR backend itself is config-switchable: local HPD vs
+PaddleOCR-VL cloud (OCR_BACKEND setting) — routing tests pin the backend so
+they never touch the network or torch.
 """
 
 import sys
@@ -103,49 +106,34 @@ def paddle_backend(monkeypatch):
 
 
 @pytest.fixture
-def text_layer_pdf(monkeypatch):
-    """A PDF that reports an embedded text layer."""
-    monkeypatch.setattr(pdf_parser, "_has_text_layer", lambda path: True)
-
-
-@pytest.fixture
 def scanned_pdf(monkeypatch):
     """A PDF that reports no embedded text layer."""
     monkeypatch.setattr(pdf_parser, "_has_text_layer", lambda path: False)
 
 
 @pytest.fixture
-def text_layer_extraction(monkeypatch):
-    """Text-layer PDF whose extraction returns a canned result."""
+def text_layer_pdf(monkeypatch):
+    """A PDF that reports an embedded text layer — irrelevant under
+    OCR-everything, kept to prove the layer is never consulted."""
     monkeypatch.setattr(pdf_parser, "_has_text_layer", lambda path: True)
-    monkeypatch.setattr(
-        pdf_parser,
-        "extract_text_pymupdf",
-        lambda *a, **k: ("md", []),
-    )
 
 
-def test_text_layer_routes_to_pymupdf(text_layer_pdf, monkeypatch):
-    calls: dict[str, tuple] = {}
-
-    def fake_extract(
-        pdf_path, page_start=1, page_end=None, progress_callback=None, cancel_check=None
-    ):
-        calls["args"] = (pdf_path, page_start, page_end)
-        return "extracted md", []
-
-    monkeypatch.setattr(pdf_parser, "extract_text_pymupdf", fake_extract)
-
+def test_text_layer_ignored_routes_to_paddle(
+    text_layer_pdf, stub_paddle, paddle_backend, unreachable_parser_modules
+):
+    """OCR-everything (decision 2026-08-14): even a PDF that reports a
+    clean embedded text layer is OCR'd — the scanned textbooks' baked-in
+    layers are untrusted. Text layer → PyMuPDF is gone."""
     markdown, errors, method = pdf_parser.parse_pdf_hybrid(
         "/book.pdf",
         page_start=2,
         page_end=5,
+        dpi=150,
     )
 
-    assert method == "text_layer"
-    assert markdown == "extracted md"
+    assert method == "ocr"
+    assert markdown == "# paddle md"
     assert errors == []
-    assert calls["args"] == ("/book.pdf", 2, 5)
 
 
 def test_scanned_pdf_routes_to_hpd(
@@ -219,32 +207,44 @@ def test_auto_backend_picks_local_without_token(
     assert markdown == "# fake md"
 
 
-def test_paddle_never_imported_for_text_pdfs(
-    text_layer_extraction, unreachable_parser_modules, monkeypatch
+def test_text_layer_ignored_routes_to_hpd(
+    text_layer_pdf, stub_hpd, local_backend, unreachable_parser_modules
 ):
-    monkeypatch.setitem(sys.modules, "src.services.paddle_ocr_service", _UnimportableModule())
+    """Even a text-layer PDF reaches the local OCR backend — the layer's
+    reported presence changes nothing (decision 2026-08-14)."""
+    markdown, errors, method = pdf_parser.parse_pdf_hybrid("/book.pdf")
 
-    markdown, _, method = pdf_parser.parse_pdf_hybrid("/book.pdf")
+    assert method == "ocr"
+    assert markdown == "# fake md"
+    assert errors == []
 
-    assert method == "text_layer"
-    assert markdown == "md"
 
-
-@pytest.mark.parametrize("mode", ["fast", "balanced", "hybrid"])
-def test_mode_is_ignored_for_text_pdfs(text_layer_extraction, unreachable_parser_modules, mode):
+@pytest.mark.parametrize("mode", ["fast", "balanced", "hybrid", "hpd", "garbage"])
+def test_mode_is_ignored_for_text_layer_pdfs(
+    text_layer_pdf, stub_hpd, local_backend, unreachable_parser_modules, mode
+):
     _, _, method = pdf_parser.parse_pdf_hybrid("/book.pdf", mode=mode)
 
-    assert method == "text_layer"
+    assert method == "ocr"
 
 
-def test_hpd_never_imported_for_text_pdfs(text_layer_extraction, monkeypatch):
-    """The HPD branch must not be reached when a text layer exists."""
-    monkeypatch.setitem(sys.modules, "src.utils.hpd_parser", _UnimportableModule())
+def test_text_layer_check_is_never_consulted(
+    stub_paddle, paddle_backend, unreachable_parser_modules, monkeypatch
+):
+    """The text-layer gate is gone from the parse path: _has_text_layer
+    must never be called — a leftover call would re-enable PyMuPDF routing
+    for scanned textbooks' baked-in (untrusted) layers."""
 
-    markdown, _, method = pdf_parser.parse_pdf_hybrid("/book.pdf")
+    def boom(path):
+        raise AssertionError("_has_text_layer must never be called by parse_pdf_hybrid")
 
-    assert method == "text_layer"
-    assert markdown == "md"
+    monkeypatch.setattr(pdf_parser, "_has_text_layer", boom)
+
+    markdown, errors, method = pdf_parser.parse_pdf_hybrid("/book.pdf")
+
+    assert method == "ocr"
+    assert markdown == "# paddle md"
+    assert errors == []
 
 
 # ---------------------------------------------------------------------------
@@ -334,8 +334,9 @@ def test_has_text_layer_keeps_noisy_text_without_image(tmp_path):
 def test_garbage_scan_routes_through_parse_to_ocr(
     tmp_path, stub_paddle, paddle_backend, unreachable_parser_modules
 ):
-    """End to end: a garbage-text-layer scan ends up on the OCR backend,
-    not PyMuPDF."""
+    """End to end on a real fitz-generated scanned PDF: whatever its text
+    layer carries (here: garbage), the parse entry point lands on the OCR
+    backend — never on PyMuPDF."""
     pdf = _make_scan_pdf(str(tmp_path / "garbage.pdf"), GARBAGE_TEXT)
 
     markdown, errors, method = pdf_parser.parse_pdf_hybrid(pdf)
