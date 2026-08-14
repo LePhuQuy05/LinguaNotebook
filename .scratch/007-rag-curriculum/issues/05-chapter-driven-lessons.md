@@ -15,6 +15,8 @@
 
 ## Comments
 
+2026-08-14 (follow-up) — curriculum extractor now handles 章-based books too (8e90001). The TOC scan only read 課-based TOCs; a new upload — Shinkanzen N3 Kanji (192p, doc `550b5b66`) — came back with 0 `document_structures` rows because its chapters are `N章` and its TOC pages (5–7) break the dotted page anchors across lines. `extract_curriculum` now falls back to body headings (`## N章 <title>`, full-width-digit + OCR-space tolerant), skipping test/quiz/まとめ/復習 and multi-chapter spans, deduping repeated headings. 20 chapters extracted (p8–192) and backfilled; `/documents/{id}/structures` serves them; `/lessons/daily` stays chapter-driven (GOI ch1, 5 items). 6 new unit tests; 137 backend tests pass.
+
 2026-08-14 — completed, live-verified. `/lessons/daily` now attributes the lesson to its chapter (`document_id`, `chapter_num`, `chapter_title`, `document_filename`), and every item carries a `source` block (page_start/page_end/token_count/block_type/content) resolved from the Qdrant point id via `rag_service.get_chunk_sources` (extracted from the route handler to a testable service seam). Items also now include `correct_answer`, which the flashcard reveal needs (previously omitted from the daily response). Live: chapter 1 `人間関係1：家族と友達、性格`, 5 items all sourced from page 3. Tests: `test_lesson_service.py` (chapter walk, page-scoped retrieval, fallback), `test_rag_service.py::TestGetChunkSources`.
 
 2026-08-13 — Implemented, 11 unit tests green, two-axis code review applied:
