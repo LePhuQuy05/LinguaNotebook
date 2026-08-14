@@ -6,12 +6,12 @@ Gotcha: the running dev database needs the new column added by hand — the sche
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] A chapter lesson's items carry a per-type `data` payload produced by the rule generator
-- [ ] Flashcard items show term, reading, definition, example; MC items expose four options + correct index
-- [ ] Selecting the correct option grades the item correct; any other option wrong; flashcard uses self-rating
-- [ ] The daily lesson response includes each item's `data` and options
-- [ ] Old items without `data` still render and answer as today
-- [ ] The generator seam is one protocol with a dispatcher driven by the generator setting; `rule` is the default
-- [ ] Coverage ≥80% at the lesson-service and generator seams
+- [x] A chapter lesson's items carry a per-type `data` payload produced by the rule generator
+- [x] Flashcard items show term, reading, definition, example; MC items expose four options + correct index
+- [x] Selecting the correct option grades the item correct; any other option wrong; flashcard uses self-rating
+- [x] The daily lesson response includes each item's `data` and options
+- [x] Old items without `data` still render and answer as today
+- [x] The generator seam is one protocol with a dispatcher driven by the generator setting; `rule` is the default
+- [x] Coverage ≥80% at the lesson-service and generator seams
