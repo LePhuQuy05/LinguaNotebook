@@ -99,12 +99,19 @@ def _save_content_blocks(document_id: str, markdown: str, errors: list, method: 
     markdown = _deduplicate_repeated_lines(markdown)
 
     async def _run():
+        from sqlalchemy import delete
+
         async with AsyncSessionLocal() as db:
             doc = (
                 await db.execute(select(Document).where(Document.id == document_id))
             ).scalar_one_or_none()
             if not doc:
                 return
+
+            # A re-parse replaces the document's blocks — delete the old
+            # ones first, in the same transaction, so a crash mid-save
+            # rolls back and leaves the existing blocks intact.
+            await db.execute(delete(ContentBlock).where(ContentBlock.document_id == document_id))
 
             # Typed blocks with page numbers taken from the `--- Page N ---`
             # markers — never from array indexes (the old split discarded the

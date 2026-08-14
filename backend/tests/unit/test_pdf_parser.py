@@ -272,6 +272,29 @@ def _make_blank_pdf(path: str) -> str:
     return path
 
 
+def _make_scan_pdf(path: str, text: str, pages: int = 3, image: bool = True) -> str:
+    """Generate a scanned-style PDF: a full-page raster image with an
+    embedded text layer on top (the CHOUKAI structure — scan + baked-in
+    OCR). Text is drawn on several lines so enough of it lands inside the
+    page for the quality gate to judge."""
+    doc = fitz.open()
+    pix = fitz.Pixmap(fitz.csRGB, fitz.IRect(0, 0, 600, 200))
+    pix.clear_with(200)  # a non-black solid background
+    for _ in range(pages):
+        page = doc.new_page(width=600, height=200)
+        if image:
+            page.insert_image(page.rect, pixmap=pix)
+        for ln in range(3):
+            page.insert_text((5, 40 + ln * 40), text, fontsize=10)
+    doc.save(path)
+    doc.close()
+    return path
+
+
+GARBAGE_TEXT = "tf=fv7r- E6=EfrWt=ilfiffi +filr)*D' t'J' iEEffifE' EfiA'H7"
+CLEAN_TEXT = "Hello world, this is a normal page of embedded text."
+
+
 def test_has_text_layer_true_for_text_pdf(tmp_path):
     assert pdf_parser._has_text_layer(_make_text_pdf(str(tmp_path / "text.pdf"))) is True
 
@@ -282,6 +305,62 @@ def test_has_text_layer_false_for_blank_pdf(tmp_path):
 
 def test_has_text_layer_false_for_unreadable_path():
     assert pdf_parser._has_text_layer("nonexistent.pdf") is False
+
+
+def test_has_text_layer_routes_garbage_scan_to_ocr(tmp_path):
+    """A scanned page whose embedded text layer is noise (bad baked-in
+    OCR) must not be trusted — route it to the OCR backend."""
+    pdf = _make_scan_pdf(str(tmp_path / "garbage.pdf"), GARBAGE_TEXT)
+
+    assert pdf_parser._has_text_layer(pdf) is False
+
+
+def test_has_text_layer_keeps_clean_scan_with_good_embedded_text(tmp_path):
+    """A searchable scan (clean embedded OCR text over the image) is a
+    genuine text layer — keep it."""
+    pdf = _make_scan_pdf(str(tmp_path / "searchable.pdf"), CLEAN_TEXT)
+
+    assert pdf_parser._has_text_layer(pdf) is True
+
+
+def test_has_text_layer_keeps_noisy_text_without_image(tmp_path):
+    """Noise text on a digital page (no raster image) is not a scan —
+    keep the text layer. Guards code/math-heavy digital books."""
+    pdf = _make_scan_pdf(str(tmp_path / "noimage.pdf"), GARBAGE_TEXT, image=False)
+
+    assert pdf_parser._has_text_layer(pdf) is True
+
+
+def test_garbage_scan_routes_through_parse_to_ocr(
+    tmp_path, stub_paddle, paddle_backend, unreachable_parser_modules
+):
+    """End to end: a garbage-text-layer scan ends up on the OCR backend,
+    not PyMuPDF."""
+    pdf = _make_scan_pdf(str(tmp_path / "garbage.pdf"), GARBAGE_TEXT)
+
+    markdown, errors, method = pdf_parser.parse_pdf_hybrid(pdf)
+
+    assert method == "ocr"
+    assert markdown == "# paddle md"
+    assert errors == []
+
+
+def test_page_image_fraction_full_page(tmp_path):
+    pdf = _make_scan_pdf(str(tmp_path / "scan.pdf"), CLEAN_TEXT)
+    doc = fitz.open(pdf)
+    frac = pdf_parser._page_image_fraction(doc[0])
+    doc.close()
+
+    assert frac >= 0.9
+
+
+def test_page_image_fraction_no_images(tmp_path):
+    pdf = _make_text_pdf(str(tmp_path / "text.pdf"))
+    doc = fitz.open(pdf)
+    frac = pdf_parser._page_image_fraction(doc[0])
+    doc.close()
+
+    assert frac == 0.0
 
 
 def test_extract_text_pymupdf_produces_page_markers(tmp_path):

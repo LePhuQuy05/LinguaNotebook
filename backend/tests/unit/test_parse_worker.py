@@ -145,6 +145,53 @@ class TestSaveContentBlocks:
         assert sessions["doc"].parse_method == "ocr"
 
 
+class TestContentBlocksIdempotency:
+    """A re-parse must replace a document's blocks, never duplicate them.
+
+    The old code only added new ContentBlock rows, so re-running the parse
+    task for a document stacked a second (garbage) copy of every page. The
+    save now deletes the document's existing blocks first — in the same
+    transaction, so a crash mid-save leaves the old blocks intact."""
+
+    class IdempotentSession:
+        def __init__(self, doc):
+            self._doc = doc
+            self.added = []
+            self.deletes = 0
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def execute(self, statement):
+            from sqlalchemy import Delete
+
+            if isinstance(statement, Delete):
+                self.deletes += 1
+                return FakeResult(None)
+            return FakeResult(self._doc)
+
+        def add(self, obj):
+            self.added.append(obj)
+
+        async def commit(self):
+            pass
+
+    def test_reparse_replaces_existing_blocks(self, worker, monkeypatch):
+        pw, _ = worker
+        doc = FakeDocument()
+        session = self.IdempotentSession(doc)
+        monkeypatch.setattr("src.core.database.AsyncSessionLocal", lambda: session)
+
+        pw._save_content_blocks("doc-1", FIVE_PAGE_MARKDOWN, [], "ocr")
+
+        # old blocks deleted first, then the fresh batch
+        assert session.deletes == 1
+        assert len(session.added) == 6
+
+
 class TestSaveCurriculumStructure:
     """TOC extraction wiring — rows are replaced on re-parse, never merged,
     and an absent map writes nothing (conservative by design)."""
@@ -187,10 +234,20 @@ class TestSaveCurriculumStructure:
         monkeypatch.setattr(
             "src.services.curriculum_service.extract_curriculum",
             lambda markdown: [
-                {"part": "第1部", "chapter_num": 1, "chapter_title": "人・体",
-                 "page_start": 2, "page_end": 5},
-                {"part": "第1部", "chapter_num": 2, "chapter_title": "天気",
-                 "page_start": 6, "page_end": 9},
+                {
+                    "part": "第1部",
+                    "chapter_num": 1,
+                    "chapter_title": "人・体",
+                    "page_start": 2,
+                    "page_end": 5,
+                },
+                {
+                    "part": "第1部",
+                    "chapter_num": 2,
+                    "chapter_title": "天気",
+                    "page_start": 6,
+                    "page_end": 9,
+                },
             ],
         )
 

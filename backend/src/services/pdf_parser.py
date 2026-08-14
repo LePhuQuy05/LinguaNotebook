@@ -16,7 +16,18 @@ from dataclasses import dataclass, field
 
 import fitz  # PyMuPDF
 
+from src.utils.text_quality import JUNK_RATIO_BAD, junk_ratio
+
 logger = logging.getLogger(__name__)
+
+# Garbage text-layer gate: a PDF can carry a text layer that is itself a
+# bad OCR of the page scans (baked in when the PDF was produced). It
+# passes a char-count check but the text is gibberish. Such a page reads
+# as garbage when a raster image covers most of it AND its embedded text
+# is mostly noise symbols — a real digital page has no full-page scan.
+_GARBAGE_IMAGE_FRAC = 0.5  # page mostly a raster image → a scan
+_GARBAGE_MIN_CHARS = 30  # too little text to judge → never a garbage vote
+_GARBAGE_VOTES = 2  # of the sampled pages must be garbage to route to OCR
 
 
 @dataclass
@@ -29,11 +40,44 @@ class PageContent:
     source: str = ""  # "text_layer" or "ocr"
 
 
-def _has_text_layer(pdf_path: str, sample_pages: int = 3) -> bool:
-    """Check if a PDF has embedded text by sampling a few pages.
+def _page_image_fraction(page) -> float:
+    """Fraction of the page rect covered by placed raster images.
 
-    Returns True if any sampled page has >50 chars of real text
-    (not just header/footer noise).
+    A scanned page is one big image; a digital page has none. Uses
+    ``get_image_info`` (placement info only — no rendering).
+    """
+    info = page.get_image_info()
+    area = sum(
+        (img["bbox"][2] - img["bbox"][0]) * (img["bbox"][3] - img["bbox"][1]) for img in info
+    )
+    rect = page.rect
+    page_area = rect.width * rect.height
+    return min(1.0, area / page_area) if page_area else 0.0
+
+
+def _page_is_garbage_text(page) -> bool:
+    """A scanned page carrying a noise text layer (bad baked-in OCR).
+
+    Both signals are required: a raster image covers most of the page
+    (it is a scan) AND the embedded text is mostly noise symbols. A scan
+    with clean embedded text (searchable PDF) or a digital page with
+    odd symbols (code, math) is never garbage.
+    """
+    text = page.get_text("text")
+    if len(text.strip()) < _GARBAGE_MIN_CHARS:
+        return False  # too little text to judge — never a garbage vote
+    if junk_ratio(text) < JUNK_RATIO_BAD:
+        return False
+    return _page_image_fraction(page) >= _GARBAGE_IMAGE_FRAC
+
+
+def _has_text_layer(pdf_path: str, sample_pages: int = 3) -> bool:
+    """Check if a PDF has usable embedded text by sampling a few pages.
+
+    Returns True only when the sampled pages carry enough real text AND
+    that text is not garbage. A scanned page whose embedded text layer
+    is noise (a bad OCR baked into the PDF at creation) routes to the
+    OCR backend instead — trusting it would extract gibberish verbatim.
     """
     try:
         doc = fitz.open(pdf_path)
@@ -43,14 +87,23 @@ def _has_text_layer(pdf_path: str, sample_pages: int = 3) -> bool:
         indices = [i for i in indices if i < total]
 
         text_chars = 0
+        garbage_votes = 0
         for idx in indices[:sample_pages]:
             page = doc[idx]
             text = page.get_text("text")
             text_chars += len(text.strip())
+            if _page_is_garbage_text(page):
+                garbage_votes += 1
 
         doc.close()
         avg_chars = text_chars / max(len(indices), 1)
         has_text = avg_chars > 100  # Real content, not just footers
+        if has_text and garbage_votes >= _GARBAGE_VOTES:
+            logger.warning(
+                f"PDF text layer is garbage: {garbage_votes}/{len(indices)} "
+                f"sampled pages are noise over scanned images → OCR"
+            )
+            has_text = False
         logger.info(
             f"PDF text layer check: avg {avg_chars:.0f} chars/page → "
             f"{'text-based' if has_text else 'image-based'}"
