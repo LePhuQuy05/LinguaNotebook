@@ -39,3 +39,11 @@ _Avoid_: fallback to LLM (ambiguous), LLM pass
 **Known pages**:
 The set of page numbers that actually exist in a document (read from its `--- Page N ---` markers). Any page number an extraction method reports must be a member of this set; a number outside it is treated as a hallucination.
 _Avoid_: page whitelist (implementation-flavored), valid pages
+
+**Lesson item**:
+The smallest unit of study in a daily lesson — one of four types: flashcard, reading, grammar, or listening comprehension. Each carries a rendered question and correct answer plus a structured per-type payload (e.g. four answer options, a passage, a term and its reading) that the lesson generators produce.
+_Avoid_: exercise (overloaded), question card
+
+**Lesson generator**:
+The component that builds lesson items from a single knowledge chunk. A deterministic rule-based generator is the always-on floor; an optional offline small-language-model generator (CPU-only, the same seam as curriculum escalation) produces richer items behind the same interface.
+_Avoid_: lesson builder, item factory
