@@ -39,38 +39,93 @@ async def get_or_create_daily_lesson(
     db: AsyncSession,
     user_id: str,
     lesson_date: date | None = None,
+    chapter_id: str | None = None,
 ) -> Lesson | None:
-    """Get today's lesson, or generate one from active schedules."""
+    """Get today's lesson, or generate one from active schedules.
+
+    With ``chapter_id`` the user explicitly picked a chapter from a book
+    (feature 009 book picker): a lesson from exactly that chapter is returned
+    — today's already existing one for that chapter, or a freshly generated
+    one — regardless of any other lesson that may exist for today.
+    """
     if lesson_date is None:
         lesson_date = date.today()
 
-    # Check for existing lesson
-    result = await db.execute(
-        select(Lesson).where(
-            Lesson.user_id == user_id,
-            Lesson.date == lesson_date,
+    if chapter_id is not None:
+        chapter = await _load_chapter(db, user_id, chapter_id)
+        if chapter is None:
+            return None
+        existing = await _existing_chapter_lesson(db, user_id, lesson_date, chapter)
+        if existing:
+            return existing
+        schedule = await _today_schedule(db, user_id, lesson_date)
+        if schedule is None:
+            return None
+        return await generate_lesson(db, user_id, schedule, lesson_date, chapter=chapter)
+
+    # Default flow: today's existing lesson, or a fresh auto-generated one.
+    existing = (
+        await db.execute(
+            select(Lesson).where(Lesson.user_id == user_id, Lesson.date == lesson_date)
         )
-    )
-    existing = result.scalar_one_or_none()
+    ).scalar_one_or_none()
     if existing:
         return existing
 
-    # Find active schedules for today
-    weekday = lesson_date.isoweekday()
-    schedule_result = await db.execute(
-        select(Schedule).where(
-            Schedule.user_id == user_id,
-            Schedule.is_active,
-        )
-    )
-    schedules = schedule_result.scalars().all()
-    today_schedules = [s for s in schedules if weekday in s.days_of_week]
-
-    if not today_schedules:
+    schedule = await _today_schedule(db, user_id, lesson_date)
+    if schedule is None:
         return None
 
-    # Generate lesson from first matching schedule
-    return await generate_lesson(db, user_id, today_schedules[0], lesson_date)
+    return await generate_lesson(db, user_id, schedule, lesson_date)
+
+
+async def _today_schedule(db: AsyncSession, user_id: str, lesson_date: date) -> Schedule | None:
+    """The first active schedule that runs on ``lesson_date``, or None."""
+    weekday = lesson_date.isoweekday()
+    result = await db.execute(
+        select(Schedule).where(Schedule.user_id == user_id, Schedule.is_active)
+    )
+    schedules = result.scalars().all()
+    return next((s for s in schedules if weekday in s.days_of_week), None)
+
+
+async def _load_chapter(
+    db: AsyncSession, user_id: str, chapter_id: str
+) -> DocumentStructure | None:
+    """A curriculum chapter owned by the user, or None (not theirs / missing)."""
+    from src.models.document import Document
+
+    row = (
+        await db.execute(
+            select(DocumentStructure)
+            .join(Document, Document.id == DocumentStructure.document_id)
+            .where(
+                Document.user_id == user_id,
+                DocumentStructure.id == chapter_id,
+            )
+        )
+    ).scalar_one_or_none()
+    return row
+
+
+async def _existing_chapter_lesson(
+    db: AsyncSession,
+    user_id: str,
+    lesson_date: date,
+    chapter: DocumentStructure,
+) -> Lesson | None:
+    """Today's existing lesson for exactly this chapter, if any."""
+    row = (
+        await db.execute(
+            select(Lesson).where(
+                Lesson.user_id == user_id,
+                Lesson.date == lesson_date,
+                Lesson.document_id == chapter.document_id,
+                Lesson.chapter_num == chapter.chapter_num,
+            )
+        )
+    ).scalar_one_or_none()
+    return row
 
 
 async def _next_chapter(db: AsyncSession, user_id: str) -> DocumentStructure | None:
@@ -135,12 +190,15 @@ async def generate_lesson(
     user_id: str,
     schedule: Schedule,
     lesson_date: date,
+    chapter: DocumentStructure | None = None,
 ) -> Lesson:
     """Generate a daily lesson from RAG content + SRS reviews.
 
     Chapter-driven when the user has a document with a curriculum map
     (one chapter per lesson, vocab + exercises in book order); falls
-    back to the generic content-type retrieval otherwise.
+    back to the generic content-type retrieval otherwise. Pass an explicit
+    ``chapter`` (book picker) to generate a lesson from that chapter instead
+    of the auto-selected next one.
     """
     lesson = Lesson(
         user_id=user_id,
@@ -150,11 +208,10 @@ async def generate_lesson(
     )
     db.add(lesson)
 
-    chapter = await _next_chapter(db, user_id)
+    if chapter is None:
+        chapter = await _next_chapter(db, user_id)
     if chapter is not None:
-        items = await _generate_chapter_lesson(
-            db, user_id, schedule, lesson, chapter
-        )
+        items = await _generate_chapter_lesson(db, user_id, schedule, lesson, chapter)
         if items:
             await db.commit()
             await db.refresh(lesson)
@@ -199,22 +256,36 @@ async def _generate_chapter_lesson(
 
     # Chunks stay in book order; the item type follows the schedule's
     # content types (round-robin) so a reading/grammar-heavy schedule
-    # isn't silently overridden with vocabulary. The 2× retrieval buffer
-    # absorbs chunks the generator skips (e.g. empty content), so the
-    # lesson still fills to `total_items`.
+    # isn't silently overridden with vocabulary. The plan is built over
+    # non-empty chunks only: every planned chunk produces exactly one item
+    # (the rule generator always yields one for non-empty content, and the
+    # SLM generator falls back to it), so the lesson fills to `total_items`.
     item_types = schedule.content_types or ["vocabulary"]
-    items: list[LessonItem] = []
-    order = 0
+    plan: list[tuple[dict, str]] = []
     for sr in results:
-        if order >= total_items:
+        if len(plan) >= total_items:
             break
-        content_type = item_types[order % len(item_types)]
-        item = _create_lesson_item(lesson.id, content_type, sr, order)
+        if not (sr.get("content") or "").strip():
+            continue
+        content_type = item_types[len(plan) % len(item_types)]
+        plan.append((sr, content_type))
+
+    # The whole-chapter context the SLM generator reads: title + the planned
+    # chunks + their assigned types, plus the per-lesson `_cache` where the
+    # generator memoizes its one model pass (feature 009, ticket 05).
+    context = {
+        "chapter_title": chapter.chapter_title,
+        "chunks": [sr for sr, _ in plan],
+        "plan": [ct for _, ct in plan],
+        "_cache": {},
+    }
+    items: list[LessonItem] = []
+    for order, (sr, content_type) in enumerate(plan):
+        item = await _create_lesson_item(lesson.id, content_type, sr, order, context)
         if item is None:
-            continue  # generator skipped the chunk (e.g. empty content)
+            continue  # generator skipped the chunk (defensive)
         db.add(item)
         items.append(item)
-        order += 1
     logger.info(
         f"Chapter lesson: {chapter.chapter_title[:LOG_TITLE_WIDTH]} (pages "
         f"{chapter.page_start}-{chapter.page_end}) → {len(items)} items"
@@ -251,7 +322,7 @@ async def _generate_generic_lesson(
         )
 
         for sr in search_results.get("results", []):
-            item = _create_lesson_item(lesson.id, content_type, sr, order)
+            item = await _create_lesson_item(lesson.id, content_type, sr, order)
             if item is None:
                 continue  # generator skipped the chunk
             db.add(item)
@@ -266,6 +337,7 @@ async def _generate_generic_lesson(
     if order < total_items:
         try:
             from src.services.srs_service import get_due_cards
+
             due = await get_due_cards(db, user_id, total_items - order)
             for card in due:
                 item = LessonItem(
@@ -298,7 +370,9 @@ async def answer_item(
 ) -> dict:
     """Evaluate a user's answer to a lesson item."""
     result = await db.execute(
-        select(LessonItem).join(Lesson).where(
+        select(LessonItem)
+        .join(Lesson)
+        .where(
             LessonItem.id == item_id,
             Lesson.id == lesson_id,
             Lesson.user_id == user_id,
@@ -353,9 +427,7 @@ async def complete_lesson(db: AsyncSession, lesson_id: str, user_id: str) -> dic
         return {"error": "Lesson not found"}
 
     # Calculate score
-    items_result = await db.execute(
-        select(LessonItem).where(LessonItem.lesson_id == lesson_id)
-    )
+    items_result = await db.execute(select(LessonItem).where(LessonItem.lesson_id == lesson_id))
     items = items_result.scalars().all()
     if items:
         completed = [i for i in items if i.completed]
@@ -366,6 +438,7 @@ async def complete_lesson(db: AsyncSession, lesson_id: str, user_id: str) -> dic
 
     lesson.status = LessonStatus.completed
     from datetime import datetime
+
     lesson.completed_at = datetime.now(UTC)
     await db.commit()
 
@@ -387,20 +460,23 @@ def _content_type_query(content_type: str) -> str:
     return queries.get(content_type, "learning content")
 
 
-def _create_lesson_item(
+async def _create_lesson_item(
     lesson_id: str,
     content_type: str,
     search_result: dict,
     order: int,
+    context: dict | None = None,
 ) -> LessonItem | None:
     """Create a lesson item from a RAG search result via the generator seam.
 
     The generator owns the content-type → item-type mapping (vocabulary →
     flashcard, reading/grammar/listening → multiple choice) and returns
     None (skipped) when a chunk cannot produce an item, e.g. empty content.
+    ``context`` is the chapter context the SLM generator reads (title, planned
+    chunks, per-chunk types, ``_cache``); it is None outside chapter lessons.
     """
     generator = get_item_generator()
-    generated = generator.generate(search_result, content_type)
+    generated = await generator.generate(search_result, content_type, context)
     if not generated:
         return None
     item = generated[0]

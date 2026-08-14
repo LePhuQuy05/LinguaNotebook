@@ -6,6 +6,7 @@ import { Flashcard } from "../../components/learning/Flashcard";
 import { ReadingPassage } from "../../components/learning/ReadingPassage";
 import { GrammarExercise } from "../../components/learning/GrammarExercise";
 import { ListeningExercise } from "../../components/learning/ListeningExercise";
+import type { AnswerFeedback, LessonItemData } from "../../components/learning/types";
 
 interface LessonSource {
   page_start: number;
@@ -22,6 +23,7 @@ interface LessonItem {
   order_index: number;
   question: string;
   correct_answer: string;
+  data?: LessonItemData | null;
   completed: boolean;
   is_correct: boolean | null;
   source?: LessonSource | null;
@@ -38,11 +40,33 @@ interface Lesson {
   chapter_title: string | null;
 }
 
+interface BookSummary {
+  id: string;
+  filename: string;
+}
+
+interface ChapterSummary {
+  id: string;
+  part: string | null;
+  chapter_num: number;
+  chapter_title: string;
+  page_start: number;
+  page_end: number;
+}
+
 export default function LearningPage() {
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [items, setItems] = useState<LessonItem[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
+
+  // Book → chapter picker (feature 009)
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [books, setBooks] = useState<BookSummary[]>([]);
+  const [selectedBook, setSelectedBook] = useState<string | null>(null);
+  const [chapters, setChapters] = useState<ChapterSummary[]>([]);
+  const [chaptersLoading, setChaptersLoading] = useState(false);
+  const [pickerError, setPickerError] = useState<string | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -60,15 +84,52 @@ export default function LearningPage() {
       .catch(() => setLoading(false));
   }, []);
 
-  const submitAnswer = async (itemId: string, response: string, rating?: number) => {
-    if (!lesson) return;
+  // The picker's book list loads alongside the lesson.
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    fetch("/api/v1/documents", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((data) => setBooks(data.items || []))
+      .catch(() => setBooks([]));
+  }, []);
+
+  // Selecting a book loads its curriculum map (chapter list).
+  useEffect(() => {
+    if (!selectedBook) {
+      setChapters([]);
+      return;
+    }
+    const token = localStorage.getItem("token");
+    setChaptersLoading(true);
+    fetch(`/api/v1/documents/${selectedBook}/structures`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((rows) => setChapters(rows || []))
+      .catch(() => setChapters([]))
+      .finally(() => setChaptersLoading(false));
+  }, [selectedBook]);
+
+  const submitAnswer = async (
+    itemId: string,
+    response: string,
+    rating?: number,
+  ): Promise<AnswerFeedback | null> => {
+    if (!lesson) return null;
     const token = localStorage.getItem("token");
     const params = new URLSearchParams({ response });
     if (rating) params.set("self_rating", String(rating));
-    await fetch(
-      `/api/v1/lessons/${lesson.id}/items/${itemId}/answer?${params}`,
-      { method: "POST", headers: { Authorization: `Bearer ${token}` } },
-    );
+    try {
+      const res = await fetch(
+        `/api/v1/lessons/${lesson.id}/items/${itemId}/answer?${params}`,
+        { method: "POST", headers: { Authorization: `Bearer ${token}` } },
+      );
+      return await res.json();
+    } catch {
+      return null;
+    }
   };
 
   const completeLesson = async () => {
@@ -87,6 +148,27 @@ export default function LearningPage() {
       setCurrentIndex(currentIndex + 1);
     } else {
       completeLesson();
+    }
+  };
+
+  const startChapterLesson = async (chapterId: string) => {
+    const token = localStorage.getItem("token");
+    setPickerError(null);
+    try {
+      const res = await fetch(`/api/v1/lessons/daily?chapter_id=${chapterId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.lesson) {
+        setLesson(data.lesson);
+        setItems(data.items || []);
+        setCurrentIndex(0);
+        setPickerOpen(false);
+      } else {
+        setPickerError(data.message || "No lesson could be created for that chapter.");
+      }
+    } catch {
+      setPickerError("Could not start the lesson. Is the backend running?");
     }
   };
 
@@ -137,6 +219,61 @@ export default function LearningPage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6 p-6">
+      {/* Book → chapter picker */}
+      <div className="rounded-xl border border-border bg-surface p-4">
+        <button
+          onClick={() => setPickerOpen(!pickerOpen)}
+          className="flex w-full items-center justify-between text-sm font-medium text-foreground-muted transition-colors hover:text-foreground"
+        >
+          <span>📚 Pick a book and chapter</span>
+          <span>{pickerOpen ? "▲" : "▼"}</span>
+        </button>
+        {pickerOpen && (
+          <div className="mt-3 space-y-3">
+            <select
+              value={selectedBook ?? ""}
+              onChange={(e) => setSelectedBook(e.target.value || null)}
+              className="w-full rounded-lg border border-border bg-surface p-3 text-foreground focus:border-primary-500 focus:outline-none"
+            >
+              <option value="">Pick a book…</option>
+              {books.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.filename}
+                </option>
+              ))}
+            </select>
+            {chaptersLoading && (
+              <p className="text-sm text-foreground-muted">Loading chapters…</p>
+            )}
+            {!chaptersLoading && selectedBook && chapters.length === 0 && (
+              <p className="text-sm text-foreground-muted">
+                This book has no curriculum map yet.
+              </p>
+            )}
+            {!chaptersLoading && chapters.length > 0 && (
+              <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-border p-1">
+                {chapters.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => startChapterLesson(c.id)}
+                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted"
+                  >
+                    <span className="text-sm text-foreground">
+                      Ch. {c.chapter_num} · {c.chapter_title}
+                    </span>
+                    <span className="text-xs text-foreground-subtle">
+                      p.{c.page_start}
+                      {c.page_end !== c.page_start ? `–${c.page_end}` : ""}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {pickerError && <p className="text-sm text-destructive">{pickerError}</p>}
+          </div>
+        )}
+      </div>
+
       {/* Source attribution — which book/chapter this lesson comes from */}
       {lesson.chapter_title && (
         <div className="rounded-xl border border-border bg-surface p-4">
@@ -173,41 +310,33 @@ export default function LearningPage() {
         </div>
       </div>
 
-      {/* Item renderer */}
+      {/* Item renderer — submit shows feedback, Next advances */}
       {currentItem.item_type === "flashcard" && (
         <Flashcard
           item={currentItem}
-          onSubmit={(response, rating) => {
-            submitAnswer(currentItem.id, response, rating);
-            handleNext();
-          }}
+          onSubmit={(response, rating) => submitAnswer(currentItem.id, response, rating)}
+          onNext={handleNext}
         />
       )}
       {currentItem.item_type === "reading" && (
         <ReadingPassage
           item={currentItem}
-          onSubmit={(response) => {
-            submitAnswer(currentItem.id, response);
-            handleNext();
-          }}
+          onSubmit={(response) => submitAnswer(currentItem.id, response)}
+          onNext={handleNext}
         />
       )}
       {currentItem.item_type === "grammar" && (
         <GrammarExercise
           item={currentItem}
-          onSubmit={(response) => {
-            submitAnswer(currentItem.id, response);
-            handleNext();
-          }}
+          onSubmit={(response) => submitAnswer(currentItem.id, response)}
+          onNext={handleNext}
         />
       )}
       {currentItem.item_type === "listening" && (
         <ListeningExercise
           item={currentItem}
-          onSubmit={(response) => {
-            submitAnswer(currentItem.id, response);
-            handleNext();
-          }}
+          onSubmit={(response) => submitAnswer(currentItem.id, response)}
+          onNext={handleNext}
         />
       )}
 

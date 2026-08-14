@@ -44,9 +44,7 @@ _PARTICLE_RE = re.compile(r"[一-龠ぁ-んァ-ヶ]+(が|を|に|へ|で|と|か
 # Textbook vocabulary entry shapes, tried in order: term（reading）—
 # definition, then term — definition.
 _VOCAB_ENTRY = (
-    re.compile(
-        r"^\s*([^\s（()]+?)\s*[（(]\s*([^（）()]+?)\s*[）)]\s*[—―\-–:：]\s*(.+?)\s*$"
-    ),
+    re.compile(r"^\s*([^\s（()]+?)\s*[（(]\s*([^（）()]+?)\s*[）)]\s*[—―\-–:：]\s*(.+?)\s*$"),
     re.compile(r"^\s*([^\s—―\-–]+?)\s*[—―\-–]\s*(.+?)\s*$"),
 )
 
@@ -80,13 +78,17 @@ class GeneratedItem:
 class ItemGenerator(Protocol):
     """Build zero or one structured item from a knowledge chunk."""
 
-    def generate(
+    async def generate(
         self,
         chunk: dict,
         content_type: str,
         context: dict | None = None,
     ) -> list[GeneratedItem]:
-        """Return items for the chunk; [] skips it (e.g. empty content)."""
+        """Return items for the chunk; [] skips it (e.g. empty content).
+
+        Async because the small-LM generator runs model inference; the rule
+        generator is effectively synchronous (an async def with no awaits).
+        """
         ...
 
 
@@ -108,9 +110,7 @@ def _shuffled(pool: list[str], key: str) -> list[str]:
     return pool
 
 
-def _four_options(
-    correct: str, distractors: list[str], key: str
-) -> tuple[list[str], int]:
+def _four_options(correct: str, distractors: list[str], key: str) -> tuple[list[str], int]:
     """Return (four options, index of the correct one) for a chunk."""
     pool = [correct] + [d for d in distractors if d and d != correct]
     for filler in FALLBACK_DISTRACTORS:
@@ -186,7 +186,7 @@ class RuleBasedGenerator:
     particle is found. An empty chunk is skipped.
     """
 
-    def generate(
+    async def generate(
         self,
         chunk: dict,
         content_type: str,
@@ -276,13 +276,19 @@ class RuleBasedGenerator:
 def get_item_generator() -> ItemGenerator:
     """Resolve the active generator from the LESSON_GENERATOR setting.
 
-    "rule" (the default) → the rule-based floor. "slm"/"both" are not
-    implemented until ticket 05; until then they degrade to the rule
-    floor so behaviour is identical to rule-only.
+    "rule" (the default) → the rule-based floor. "slm" → the whole-chapter
+    small-LM generator (ticket 05); it degrades to the rule floor when no
+    model is configured. "both" is not implemented until ticket 06 (two
+    comparable lessons) and degrades to the rule floor.
     """
     requested = (settings.lesson_generator or "rule").strip().lower()
+    if requested == "slm":
+        from src.services.slm_generator import SlmGenerator
+
+        return SlmGenerator()
+    if requested == "both":
+        logger.warning("Lesson generator 'both' not implemented — falling back to rule")
+        return RuleBasedGenerator()
     if requested != "rule":
-        logger.warning(
-            "Lesson generator %r not implemented — falling back to rule", requested
-        )
+        logger.warning("Lesson generator %r not implemented — falling back to rule", requested)
     return RuleBasedGenerator()

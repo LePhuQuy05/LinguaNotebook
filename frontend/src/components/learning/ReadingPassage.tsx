@@ -1,36 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { ChoiceExercise } from "./ChoiceExercise";
+import type { ItemProps } from "./types";
 
-interface ReadingPassageProps {
-  item: { id: string; question: string; correct_answer: string };
-  onSubmit: (response: string) => void;
-}
-
-export function ReadingPassage({ item, onSubmit }: ReadingPassageProps) {
-  const [answer, setAnswer] = useState("");
+/** Reading comprehension: a passage plus four choices (or a legacy text input). */
+export function ReadingPassage({ item, onSubmit, onNext }: ItemProps) {
+  const data = item.data;
+  const passage = data?.passage || item.question;
 
   return (
-    <div className="space-y-4">
+    <ChoiceExercise
+      options={data?.options}
+      correctIndex={data?.correct_index}
+      onSubmit={onSubmit}
+      onNext={onNext}
+      textInput={{ placeholder: "Type your answer...", submitLabel: "Submit Answer" }}
+    >
       <div className="rounded-xl border border-border bg-reading-bg p-6 shadow-card">
-        <p className="font-body text-lg leading-relaxed text-reading-text">
-          {item.question}
-        </p>
+        <p className="mb-2 text-sm font-medium uppercase text-foreground-muted">Reading</p>
+        <p className="font-body text-lg leading-relaxed text-reading-text">{passage}</p>
       </div>
-      <textarea
-        value={answer}
-        onChange={(e) => setAnswer(e.target.value)}
-        placeholder="Type your answer..."
-        rows={3}
-        className="w-full rounded-lg border border-border bg-surface p-4 text-foreground placeholder:text-foreground-subtle focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100"
-      />
-      <button
-        onClick={() => onSubmit(answer)}
-        disabled={!answer.trim()}
-        className="w-full rounded-lg bg-accent-600 py-3 font-medium text-white transition-colors hover:bg-accent-700 disabled:opacity-50"
-      >
-        Submit Answer
-      </button>
-    </div>
+    </ChoiceExercise>
   );
 }

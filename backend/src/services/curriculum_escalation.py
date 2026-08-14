@@ -16,8 +16,9 @@ on top of it:
   returns ``None`` and extraction behaves exactly as before the feature
   existed.
 
-The model adapter wraps llama-cpp-python (CPU-only, lazy import — the suite
-never imports it). Default model is Qwen3-1.7B Q4_K_M (Apache-2.0); path is
+The model adapter lives in :mod:`src.services.slm_runtime` (shared with the
+lesson-item generator): llama-cpp-python, CPU-only, lazy import — the suite
+never imports it. Default model is Qwen3-1.7B Q4_K_M (Apache-2.0); path is
 configurable via ``CURRICULUM_LLM_PATH``. See ``docs/curriculum-escalation.md``
 for model choice and the one-line install.
 """
@@ -28,6 +29,12 @@ from collections.abc import Sequence
 
 from src.services.curriculum_service import Entry, Escalator
 from src.services.hpd_markdown import split_pages
+from src.services.slm_runtime import (
+    get_runtime as _get_llm,
+)
+from src.services.slm_runtime import (
+    resolve_model_file as _resolve_model_file,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,38 +45,6 @@ _ENTRY_RE = re.compile(r"^\s*(\d{1,3})\s*\|\s*([^|\n]+?)\s*\|\s*(\d{1,4})\s*$")
 # entries (a book rarely has more) is a degenerate generation we truncate.
 _MAX_ENTRIES = 200
 
-# Adapter knobs — pinned for deterministic recovery (temperature 0; see
-# ADR-0001 "reason free, constrain late"). Context 2048 comfortably covers a
-# few TOC pages' worth of text; two threads keep CPU inference from starving
-# the rest of the worker process.
-_CTX = 2048
-_THREADS = 2
-_MAX_TOKENS = 512
-_STOP_SEQ = ["\n\n"]
-
-
-def _resolve_model_file(path: str) -> str | None:
-    """Resolve ``CURRICULUM_LLM_PATH`` to a .gguf file.
-
-    Accepts either a direct file path or a directory containing exactly one
-    .gguf. Returns ``None`` when the path is empty/unresolvable (escalation
-    disabled) or ambiguous (multiple models in the directory).
-    """
-    if not path:
-        return None
-    from pathlib import Path
-
-    p = Path(path)
-    if p.is_file() and p.suffix.lower() == ".gguf":
-        return str(p)
-    if p.is_dir():
-        ggufs = sorted(f for f in p.iterdir() if f.suffix.lower() == ".gguf")
-        if len(ggufs) == 1:
-            return str(ggufs[0])
-        if len(ggufs) > 1:
-            return None  # ambiguous — refuse to guess
-    return None
-
 
 def _build_prompt(markdown: str, toc_pages: set[int], known_pages: Sequence[int]) -> str:
     """Isolate the TOC pages and spell out the page whitelist.
@@ -78,18 +53,26 @@ def _build_prompt(markdown: str, toc_pages: set[int], known_pages: Sequence[int]
     the model cannot silently copy a heading that is not on the TOC, and the
     whitelist is stated so the model (mostly) self-constrains. Verification in
     :func:`_verify_and_finalize` remains the hard guarantee.
+
+    Two worked ``=>`` examples teach the 1.7B model the target line format; a
+    small model mirrors the last few lines' shape, and without them it echoes
+    the input TOC lines verbatim (``3課 人間関係 .....4``).
     """
     toc_content = "\n".join(body for n, body in split_pages(markdown) if n in toc_pages)
     allowed = ", ".join(str(p) for p in sorted(known_pages))
     return (
-        "You are extracting the chapter/lesson table of contents from a scanned"
+        "You are extracting the chapter table of contents from a scanned"
         " textbook's table-of-contents pages.\n"
-        "Output every entry as one line: <number>|<title>|<page>\n"
+        "Rewrite each TOC line as exactly one line: <number>|<title>|<page>,\n"
+        "numbering the entries 1, 2, 3 ... in the order they appear.\n"
         f"Use ONLY page numbers from this list: {allowed}\n"
-        "Follow the order the entries appear in the book. No preamble, no\n"
-        "commentary, nothing else.\n\n"
+        "Do not explain, do not repeat. Output only the numbered lines.\n"
+        "Examples:\n"
+        "1課 あいさつ .....8\n=> 1|あいさつ|8\n"
+        "2課 学校 .....30\n=> 2|学校|30\n\n"
         "--- TOC pages ---\n"
-        f"{toc_content}"
+        f"{toc_content}\n\n"
+        "Output:\n"
     )
 
 
@@ -129,48 +112,6 @@ def _verify_and_finalize(raw: str | None, known_pages: Sequence[int]) -> list[En
         {"part": "", "chapter_num": i, "chapter_title": title, "page": page}
         for i, (title, page) in enumerate(pairs, start=1)
     ]
-
-
-class _CurriculumLLM:
-    """Thin lazy adapter over llama-cpp-python (CPU-only inference)."""
-
-    def __init__(self, model_path: str) -> None:
-        # Lazy import: this is an optional dependency and the module must be
-        # importable in environments that never run escalation.
-        from llama_cpp import Llama
-
-        self._llm = Llama(
-            model_path=model_path,
-            n_ctx=_CTX,
-            n_threads=_THREADS,
-            verbose=False,
-        )
-
-    def generate(self, prompt: str) -> str:
-        out = self._llm(
-            prompt,
-            temperature=0.0,
-            max_tokens=_MAX_TOKENS,
-            stop=_STOP_SEQ,
-        )
-        # llama-cpp's return is untyped; normalize through str() so the
-        # signature stays a definite str under --strict.
-        choices = out.get("choices", [])
-        text = choices[0].get("text", "") if choices else ""
-        return str(text)
-
-
-# Process-level cache: the model is a few hundred MB and takes seconds to load;
-# load once and reuse across documents in the same worker process.
-_llm_cache: dict[str, _CurriculumLLM] = {}
-
-
-def _get_llm(model_path: str) -> _CurriculumLLM:
-    llm = _llm_cache.get(model_path)
-    if llm is None:
-        llm = _CurriculumLLM(model_path)
-        _llm_cache[model_path] = llm
-    return llm
 
 
 def build_curriculum_escalator() -> Escalator | None:

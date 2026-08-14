@@ -3,17 +3,26 @@
 import { useState } from "react";
 import { Play, Pause } from "lucide-react";
 
-interface ListeningExerciseProps {
-  item: { id: string; question: string; correct_answer: string };
-  onSubmit: (response: string) => void;
-}
+import { ChoiceExercise } from "./ChoiceExercise";
+import type { ItemProps } from "./types";
 
-export function ListeningExercise({ item, onSubmit }: ListeningExerciseProps) {
+/** Listening comprehension: a play button, the transcript, and four choices. */
+export function ListeningExercise({ item, onSubmit, onNext }: ItemProps) {
   const [playing, setPlaying] = useState(false);
-  const [answer, setAnswer] = useState("");
+  const data = item.data;
+  const transcript = data?.text || item.question;
 
   return (
-    <div className="space-y-4">
+    <ChoiceExercise
+      options={data?.options}
+      correctIndex={data?.correct_index}
+      onSubmit={onSubmit}
+      onNext={onNext}
+      textInput={{
+        placeholder: "What did you hear? Type your answer...",
+        submitLabel: "Submit",
+      }}
+    >
       <div className="rounded-xl border border-border bg-surface p-8 shadow-card text-center">
         <button
           onClick={() => setPlaying(!playing)}
@@ -24,24 +33,12 @@ export function ListeningExercise({ item, onSubmit }: ListeningExerciseProps) {
         <p className="mt-4 text-sm text-foreground-muted">
           {playing ? "Playing..." : "Tap to listen"}
         </p>
+        {data?.text && (
+          <p className="mt-4 whitespace-pre-wrap rounded-lg bg-muted p-4 text-left text-foreground-subtle">
+            {data.text}
+          </p>
+        )}
       </div>
-      <div className="rounded-xl border border-border bg-surface p-4">
-        <p className="font-medium text-foreground">{item.question}</p>
-      </div>
-      <input
-        type="text"
-        value={answer}
-        onChange={(e) => setAnswer(e.target.value)}
-        placeholder="What did you hear? Type your answer..."
-        className="w-full rounded-lg border border-border bg-surface p-4 text-foreground placeholder:text-foreground-subtle focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100"
-      />
-      <button
-        onClick={() => onSubmit(answer)}
-        disabled={!answer.trim()}
-        className="w-full rounded-lg bg-accent-600 py-3 font-medium text-white transition-colors hover:bg-accent-700 disabled:opacity-50"
-      >
-        Submit
-      </button>
-    </div>
+    </ChoiceExercise>
   );
 }

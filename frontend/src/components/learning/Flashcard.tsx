@@ -3,14 +3,23 @@
 import { useState } from "react";
 import { Volume2 } from "lucide-react";
 
-interface FlashcardProps {
-  item: { id: string; question: string; correct_answer: string };
-  onSubmit: (response: string, rating: number) => void;
-}
+import { FeedbackPanel } from "./AnswerFeedback";
+import type { AnswerFeedback, ItemProps } from "./types";
 
-export function Flashcard({ item, onSubmit }: FlashcardProps) {
+/** Vocabulary card: term + reading on the front, definition + example on the back. */
+export function Flashcard({ item, onSubmit, onNext }: ItemProps) {
   const [flipped, setFlipped] = useState(false);
   const [rating, setRating] = useState<number | null>(null);
+  const [feedback, setFeedback] = useState<AnswerFeedback | null>(null);
+
+  const data = item.data;
+  const hasData = !!data?.term;
+
+  const submitRating = async (n: number) => {
+    setRating(n);
+    const result = await onSubmit("", n);
+    if (result) setFeedback(result);
+  };
 
   return (
     <div className="space-y-4">
@@ -20,52 +29,70 @@ export function Flashcard({ item, onSubmit }: FlashcardProps) {
       >
         {!flipped ? (
           <div className="text-center">
-            <p className="text-heading-lg font-heading text-foreground">{item.question}</p>
+            {hasData ? (
+              <>
+                <p className="text-heading-lg font-heading text-foreground">{data.term}</p>
+                {data.reading && (
+                  <p className="mt-2 text-xl text-foreground-muted">{data.reading}</p>
+                )}
+              </>
+            ) : (
+              <p className="text-heading-lg font-heading text-foreground">{item.question}</p>
+            )}
             <p className="mt-4 text-sm text-foreground-muted">Tap to reveal answer</p>
           </div>
         ) : (
           <div className="text-center">
-            <p className="text-lg text-foreground">{item.correct_answer}</p>
-            <button className="mt-4 inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm transition-colors hover:bg-muted">
+            {hasData ? (
+              <>
+                <p className="text-lg text-foreground">{data.definition || data.term}</p>
+                {data.example && (
+                  <p className="mt-3 text-sm text-foreground-muted">{data.example}</p>
+                )}
+              </>
+            ) : (
+              <p className="text-lg text-foreground">{item.correct_answer}</p>
+            )}
+            <button
+              onClick={(e) => e.stopPropagation()}
+              className="mt-4 inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm transition-colors hover:bg-muted"
+            >
               <Volume2 className="h-4 w-4" /> Play Audio
             </button>
           </div>
         )}
       </div>
 
-      {flipped && (
-        <div className="space-y-3">
-          <p className="text-center text-sm font-medium text-foreground-muted">
-            How well did you know this?
-          </p>
-          <div className="flex justify-center gap-2">
-            {[1, 2, 3, 4, 5].map((n) => (
-              <button
-                key={n}
-                onClick={() => setRating(n)}
-                className={`h-10 w-10 rounded-full text-sm font-medium transition-all ${
-                  rating === n
-                    ? "bg-primary-600 text-white"
-                    : "border border-border bg-surface text-foreground-muted hover:border-primary-300"
-                }`}
-              >
-                {n}
-              </button>
-            ))}
+      {feedback ? (
+        <FeedbackPanel feedback={feedback} onNext={onNext} />
+      ) : (
+        flipped && (
+          <div className="space-y-3">
+            <p className="text-center text-sm font-medium text-foreground-muted">
+              How well did you know this?
+            </p>
+            <div className="flex justify-center gap-2">
+              {[1, 2, 3, 4, 5].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => submitRating(n)}
+                  disabled={rating !== null}
+                  className={`h-10 w-10 rounded-full text-sm font-medium transition-all ${
+                    rating === n
+                      ? "bg-primary-600 text-white"
+                      : "border border-border bg-surface text-foreground-muted hover:border-primary-300"
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+            <div className="flex justify-between text-xs text-foreground-subtle">
+              <span>Forgot</span>
+              <span>Easy</span>
+            </div>
           </div>
-          <div className="flex justify-between text-xs text-foreground-subtle">
-            <span>Forgot</span>
-            <span>Easy</span>
-          </div>
-          {rating && (
-            <button
-              onClick={() => onSubmit("", rating)}
-              className="w-full rounded-lg bg-accent-600 py-3 font-medium text-white transition-colors hover:bg-accent-700"
-            >
-              Next →
-            </button>
-          )}
-        </div>
+        )
       )}
     </div>
   );

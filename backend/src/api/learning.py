@@ -14,6 +14,7 @@ router = APIRouter(prefix="/api/v1", tags=["Learning"])
 
 # ── Schedules ─────────────────────────────────────────────────
 
+
 @router.get("/schedules")
 async def list_schedules(
     user_id: str = Depends(get_current_user_id),
@@ -51,9 +52,14 @@ async def create_schedule(
     days = [int(d) for d in days_of_week.split(",")]
     types = [t.strip() for t in content_types.split(",")]
     schedule = await schedule_service.create_schedule(
-        db=db, user_id=user_id, name=name, days_of_week=days,
-        time_of_day=time_of_day, duration_minutes=duration_minutes,
-        content_types=types, daily_item_count=daily_item_count,
+        db=db,
+        user_id=user_id,
+        name=name,
+        days_of_week=days,
+        time_of_day=time_of_day,
+        duration_minutes=duration_minutes,
+        content_types=types,
+        daily_item_count=daily_item_count,
     )
     return {"id": schedule.id, "name": schedule.name}
 
@@ -68,7 +74,11 @@ async def update_schedule(
 ):
     """Update a schedule."""
     s = await schedule_service.update_schedule(
-        db, schedule_id, user_id, name=name, is_active=is_active,
+        db,
+        schedule_id,
+        user_id,
+        name=name,
+        is_active=is_active,
     )
     if not s:
         raise HTTPException(404, "Schedule not found")
@@ -90,14 +100,22 @@ async def delete_schedule(
 
 # ── Lessons ───────────────────────────────────────────────────
 
+
 @router.get("/lessons/daily")
 async def daily_lesson(
     lesson_date: date | None = Query(None),
+    chapter_id: str | None = Query(None),
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get or generate today's lesson."""
-    lesson = await lesson_service.get_or_create_daily_lesson(db, user_id, lesson_date)
+    """Get or generate today's lesson.
+
+    ``chapter_id`` (book picker): generate a lesson from exactly that
+    chapter instead of the auto-selected next one.
+    """
+    lesson = await lesson_service.get_or_create_daily_lesson(
+        db, user_id, lesson_date, chapter_id=chapter_id
+    )
     if not lesson:
         return {"lesson": None, "message": "No active schedule for today"}
 
@@ -105,6 +123,7 @@ async def daily_lesson(
     from sqlalchemy import select
 
     from src.models.learning import LessonItem
+
     items_result = await db.execute(
         select(LessonItem).where(LessonItem.lesson_id == lesson.id).order_by(LessonItem.order_index)
     )
@@ -114,6 +133,7 @@ async def daily_lesson(
     document_filename = None
     if lesson.document_id:
         from src.models.document import Document
+
         src_doc = (
             await db.execute(select(Document).where(Document.id == lesson.document_id))
         ).scalar_one_or_none()
@@ -163,7 +183,13 @@ async def answer_item(
 ):
     """Submit an answer for a lesson item."""
     result = await lesson_service.answer_item(
-        db, lesson_id, item_id, user_id, response, time_spent_seconds, self_rating,
+        db,
+        lesson_id,
+        item_id,
+        user_id,
+        response,
+        time_spent_seconds,
+        self_rating,
     )
     if "error" in result:
         raise HTTPException(404, result["error"])
