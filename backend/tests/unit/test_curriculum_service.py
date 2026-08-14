@@ -504,3 +504,87 @@ class TestCrossCheck:
         rows = extract_curriculum(markdown)
 
         assert [r["chapter_num"] for r in rows] == [1, 2]
+
+
+class TestEscalation:
+    """Optional SLM escalation (ticket 03): when the rule scan's confidence
+    is below the gate, the escalator recovers the map from the isolated TOC
+    pages plus the Known-pages whitelist. A recovered map is still filtered
+    through the practice-section stoplist; with no escalator the low-
+    confidence result is an empty map, unchanged from before the feature."""
+
+    LOW_CONFIDENCE = (
+        "--- Page 4 ---\n"
+        "1課 人間関係 .....20\n"
+        "2課 天気 .....76\n"
+        "--- Page 20 ---\n"
+        "## 別の話題\n本文\n"
+        "--- Page 76 ---\n"
+        "## また別の話題\n本文\n"
+    )
+
+    def test_low_confidence_recovers_via_escalator(self):
+        """Neither TOC title reappears in the body (confidence 0.0 < 0.3) —
+        the escalator sees the TOC page + whitelist and recovers the map."""
+
+        def escalator(markdown, toc_pages, known_pages):
+            assert toc_pages == {4}
+            assert known_pages == [4, 20, 76]
+            return [
+                {"part": "", "chapter_num": 1, "chapter_title": "人間関係", "page": 20},
+                {"part": "", "chapter_num": 2, "chapter_title": "天気", "page": 76},
+            ]
+
+        rows = extract_curriculum(self.LOW_CONFIDENCE, escalator=escalator)
+
+        assert [(r["chapter_num"], r["chapter_title"], r["page_start"]) for r in rows] == [
+            (1, "人間関係", 20),
+            (2, "天気", 76),
+        ]
+
+    def test_escalated_titles_filtered_by_stoplist(self):
+        """A model that emits a practice section (実力を試そう) must not turn
+        it into a chapter row — the rule scan filters the stoplist at
+        extraction time, so escalator output is filtered here."""
+
+        def escalator(markdown, toc_pages, known_pages):
+            return [
+                {"part": "", "chapter_num": 1, "chapter_title": "人間関係", "page": 20},
+                {"part": "", "chapter_num": 2, "chapter_title": "実力を試そう", "page": 50},
+                {"part": "", "chapter_num": 3, "chapter_title": "天気", "page": 76},
+            ]
+
+        rows = extract_curriculum(self.LOW_CONFIDENCE, language="ja", escalator=escalator)
+
+        assert [r["chapter_title"] for r in rows] == ["人間関係", "天気"]
+
+    def test_mangled_toc_with_empty_fallbacks_escalates(self):
+        """Spec user story 6: the TOC scan finds chapter-looking lines but
+        every dotted page anchor is mangled, and both body fallbacks come up
+        empty — the escalator still reads the real TOC page and recovers the
+        map."""
+        markdown = (
+            "--- Page 4 ---\n"
+            "1課 人間関係\n"  # marker found, dotted anchor mangled away
+            "2課 天気\n"
+            "--- Page 20 ---\n"
+            "本文\n"
+            "--- Page 76 ---\n"
+            "本文\n"
+        )
+
+        def escalator(markdown, toc_pages, known_pages):
+            assert toc_pages == {4}
+            return [
+                {"part": "", "chapter_num": 1, "chapter_title": "人間関係", "page": 20},
+                {"part": "", "chapter_num": 2, "chapter_title": "天気", "page": 76},
+            ]
+
+        rows = extract_curriculum(markdown, escalator=escalator)
+
+        assert [r["page_start"] for r in rows] == [20, 76]
+
+    def test_escalation_disabled_by_default(self):
+        """No escalator → the low-confidence result is an empty map, exactly
+        as before the feature existed (graceful degradation, ticket 04)."""
+        assert extract_curriculum(self.LOW_CONFIDENCE) == []

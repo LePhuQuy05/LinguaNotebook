@@ -46,6 +46,12 @@ class Settings(BaseSettings):
     # HPD Model
     hpd_model_path: str = "./model"
 
+    # Optional SLM for curriculum escalation (feature 008, ticket 03):
+    # a directory containing a .gguf, or the path to a .gguf file. Empty /
+    # unresolvable → escalation is disabled and extraction degrades to the
+    # rule scan only (same behaviour as before the feature existed).
+    curriculum_llm_path: str = "./model/curriculum-llm"
+
     # OCR backend for image-based PDFs:
     #   "auto"   → PaddleOCR-VL cloud API if a token is configured, else local HPD
     #   "paddle" → cloud API only (requires PADDLE_OCR_TOKEN)

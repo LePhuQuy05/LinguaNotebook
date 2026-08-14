@@ -233,7 +233,7 @@ class TestSaveCurriculumStructure:
         pw, session = curriculum_env
         monkeypatch.setattr(
             "src.services.curriculum_service.extract_curriculum",
-            lambda markdown: [
+            lambda markdown, escalator=None: [
                 {
                     "part": "第1部",
                     "chapter_num": 1,
@@ -265,13 +265,43 @@ class TestSaveCurriculumStructure:
         pw, session = curriculum_env
         monkeypatch.setattr(
             "src.services.curriculum_service.extract_curriculum",
-            lambda markdown: [],
+            lambda markdown, escalator=None: [],
         )
 
         pw._save_curriculum_structure("doc-1", "no toc here")
 
         assert session.deletes == 0
         assert session.added == []
+
+    def test_escalator_is_built_and_passed(self, monkeypatch, curriculum_env):
+        """The optional SLM escalator (ticket 03) is built once per save and
+        handed to extract_curriculum — the rule scan alone decides whether to
+        use it, off the worker's persistent event loop."""
+        pw, session = curriculum_env
+        captured = {}
+
+        def fake_build():
+            captured["built"] = True
+            return object()
+
+        def fake_extract(markdown, escalator=None):
+            captured["escalator_passed"] = escalator is not None
+            return []
+
+        monkeypatch.setattr(
+            "src.services.curriculum_escalation.build_curriculum_escalator",
+            fake_build,
+        )
+        monkeypatch.setattr(
+            "src.services.curriculum_service.extract_curriculum",
+            fake_extract,
+        )
+
+        pw._save_curriculum_structure("doc-1", "any markdown")
+
+        assert captured["built"]
+        assert captured["escalator_passed"]
+        assert session.deletes == 0
 
 
 class TestPersistentEventLoop:

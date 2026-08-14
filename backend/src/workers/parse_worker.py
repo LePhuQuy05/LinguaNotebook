@@ -158,15 +158,27 @@ def _save_curriculum_structure(document_id: str, markdown: str) -> None:
 
     Conservative by design: unknown structure → empty map, nothing written.
     Idempotent per document: existing rows are replaced on re-parse.
+
+    The optional SLM escalator (ticket 03) recovers a map when the rule scan's
+    confidence is below the gate; no model configured → identical behaviour.
+    Extraction runs in a thread executor so a loaded model's inference never
+    blocks the worker's persistent event loop (which owns the asyncpg pool).
     """
     from sqlalchemy import delete
 
     from src.core.database import AsyncSessionLocal
     from src.models.document_structure import DocumentStructure
-    from src.services.curriculum_service import extract_curriculum
+    from src.services.curriculum_escalation import build_curriculum_escalator
+    from src.services.curriculum_service import ChapterRow, extract_curriculum
+
+    loop = _get_event_loop()
+    escalator = build_curriculum_escalator()
+
+    def _extract() -> list[ChapterRow]:
+        return extract_curriculum(markdown, escalator=escalator)
 
     async def _run():
-        rows = extract_curriculum(markdown)
+        rows = await loop.run_in_executor(None, _extract)
         if not rows:
             return
         async with AsyncSessionLocal() as db:
@@ -188,7 +200,7 @@ def _save_curriculum_structure(document_id: str, markdown: str) -> None:
             await db.commit()
         logger.info(f"Saved {len(rows)} curriculum rows for document {document_id}")
 
-    _get_event_loop().run_until_complete(_run())
+    loop.run_until_complete(_run())
 
 
 @celery_app.task(name="parse_pdf", bind=True, max_retries=3)

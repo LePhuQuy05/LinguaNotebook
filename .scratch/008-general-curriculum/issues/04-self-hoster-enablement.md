@@ -4,11 +4,20 @@
 
 **Blocked by:** 03 — documents/installs the adapter written there.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] One-line optional install documented (not in the base requirements)
-- [ ] Model path configurable; model directory gitignored; absent model → graceful degradation
-- [ ] Default model (Qwen3-1.7B Q4, Apache-2.0) and the accuracy option (4B) documented, with the non-commercial-license warning for excluded models
-- [ ] Gated real-model integration test runs when a model file is present, skips otherwise
+- [x] One-line optional install documented (not in the base requirements)
+- [x] Model path configurable; model directory gitignored; absent model → graceful degradation
+- [x] Default model (Qwen3-1.7B Q4, Apache-2.0) and the accuracy option (4B) documented, with the non-commercial-license warning for excluded models
+- [x] Gated real-model integration test runs when a model file is present, skips otherwise
 
 ## Comments
+
+Implemented 2026-08-14. Enablement guide: `docs/curriculum-escalation.md`
+(pip install `llama-cpp-python` → `huggingface-cli download
+unsloth/Qwen3-1.7B-GGUF Qwen3-1.7B-Q4_K_M.gguf` into `backend/model/curriculum-llm/`
+→ restart worker). Config: `CURRICULUM_LLM_PATH` (pydantic-settings, default
+`./model/curriculum-llm`), gitignored via existing `backend/model/` + `*.gguf`
+rules. Escalation resolves to `None` when no `.gguf` is found → identical
+behaviour. Gated integration test `test_real_model_end_to_end` skips unless a
+model is configured.

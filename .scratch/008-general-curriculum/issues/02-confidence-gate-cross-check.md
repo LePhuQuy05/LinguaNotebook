@@ -4,12 +4,19 @@
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Confidence score computed as the fraction of candidate titles that reappear in the body
-- [ ] Readable TOC (high confidence) wins over body headings; titles/pages unchanged
-- [ ] Mangled TOC (low confidence) recovers via body headings without dropping chapters on title drift
-- [ ] Low-confidence result yields an empty map and the current lesson fallback (no crash)
-- [ ] Golden fixtures (GOI, N3 Kanji) continue to extract the same maps
+- [x] Confidence score computed as the fraction of candidate titles that reappear in the body
+- [x] Readable TOC (high confidence) wins over body headings; titles/pages unchanged
+- [x] Mangled TOC (low confidence) recovers via body headings without dropping chapters on title drift
+- [x] Low-confidence result yields an empty map and the current lesson fallback (no crash)
+- [x] Golden fixtures (GOI, N3 Kanji) continue to extract the same maps
 
 ## Comments
+
+Implemented 2026-08-14 (Phase 1, committed) in
+`backend/src/services/curriculum_service.py`: `_cross_check_confidence()` +
+`CONFIDENCE_HIGH=0.7` / `CONFIDENCE_LOW=0.3` gates; high→TOC, mid→body
+headings, low→empty (now escalation, ticket 03). Tested in
+`tests/unit/test_curriculum_service.py` (TestCrossCheck + title-drift and
+readable-TOC-wins cases).

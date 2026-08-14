@@ -46,6 +46,7 @@ starts with 第N部 is treated as a part boundary instead.
 """
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TypedDict
 
@@ -78,6 +79,14 @@ class ChapterRow(TypedDict):
     chapter_title: str
     page_start: int
     page_end: int
+
+
+# Optional SLM escalation (ticket 03): a callable that recovers the map when
+# the rule scan's confidence is below the gate. It receives the whole markdown
+# plus the isolated TOC pages and the Known-pages whitelist, and returns
+# verified Entry rows. Escalator is a plain function type — the parse worker
+# builds one once via `build_curriculum_escalator`.
+Escalator = Callable[[str, set[int], list[int]], list[Entry]]
 
 
 @dataclass(frozen=True)
@@ -180,6 +189,18 @@ def _stoplist(language: str | None) -> re.Pattern[str]:
         if key in _STOPLIST_BY_LANGUAGE:
             return re.compile(_STOPLIST_BY_LANGUAGE[key])
     return _DEFAULT_STOPLIST
+
+
+def _drop_stoplist(entries: list[Entry], language: str | None) -> list[Entry]:
+    """Drop recovered entries that are practice/mock/review sections.
+
+    The rule scan filters the stoplist at extraction time; escalator output
+    bypasses that scan entirely, so it is filtered here — a model that emits
+    まとめ/実力を試そう/Appendix must not turn a practice section into a
+    chapter row.
+    """
+    stop = _stoplist(language)
+    return [e for e in entries if not stop.search(e["chapter_title"])]
 
 
 def _normalize(text: str) -> str:
@@ -378,12 +399,20 @@ def _extract_numbered_sections(
     return entries
 
 
-def extract_curriculum(markdown: str, language: str | None = None) -> list[ChapterRow]:
+def extract_curriculum(
+    markdown: str,
+    language: str | None = None,
+    escalator: Escalator | None = None,
+) -> list[ChapterRow]:
     """Extract the curriculum map from a book's parsed markdown.
 
     ``language`` (optional) narrows the practice-section stoplist only;
     chapter detection itself is language-agnostic via the merged marker
-    registry.
+    registry. ``escalator`` (optional, ticket 03) is consulted when the
+    rule scan's confidence is below the gate — an offline small-LM
+    recovers the map from the isolated TOC pages plus the Known-pages
+    whitelist; without one the low-confidence result is an empty map,
+    unchanged from before the feature.
 
     Returns rows in reading order: {part, chapter_num, chapter_title,
     page_start, page_end}. Page ranges are resolved from consecutive
@@ -395,7 +424,10 @@ def extract_curriculum(markdown: str, language: str | None = None) -> list[Chapt
     drifted the titles); when the scan finds nothing the extraction
     falls back to body headings (章-based books like the N3 Kanji book),
     then to numbered body headings (workbook-style books like the N3
-    CHOUKAI listening book).
+    CHOUKAI listening book). When the TOC scan found chapter-looking
+    lines but every page anchor was mangled, and both fallbacks came up
+    empty, the escalator is tried once more — it still sees the real TOC
+    pages (spec user story 6: TOC and body both fail the rule scan).
     """
     toc_entries, toc_pages = _extract_entries(markdown, language)
     toc_entries = [e for e in toc_entries if e["page"]]
@@ -403,11 +435,17 @@ def extract_curriculum(markdown: str, language: str | None = None) -> list[Chapt
     if toc_entries:
         confidence = _cross_check_confidence(toc_entries, toc_pages, markdown)
         if confidence < CONFIDENCE_LOW:
-            # The TOC cannot be confirmed against the body — no map. The
-            # current lesson fallback runs; the SLM escalation hooks in
-            # here (ticket 03).
-            return []
-        if confidence < CONFIDENCE_HIGH:
+            # The TOC cannot be confirmed against the body. No escalator →
+            # empty map (the current lesson fallback runs). With one, the
+            # model recovers the map from the isolated TOC pages + the
+            # Known-pages whitelist; practice sections are then dropped.
+            if escalator is None:
+                return []
+            known_pages = sorted({n for n, _ in split_pages(markdown)})
+            entries = _drop_stoplist(
+                escalator(markdown, toc_pages, known_pages), language
+            )
+        elif confidence < CONFIDENCE_HIGH:
             # The OCR drifted some titles: prefer the body headings (no
             # chapter is dropped on title drift); keep the TOC only if
             # the body carries no readable headings at all.
@@ -419,6 +457,15 @@ def extract_curriculum(markdown: str, language: str | None = None) -> list[Chapt
         entries = _extract_body_chapters(markdown, language)
         if not entries:
             entries = _extract_numbered_sections(markdown, language)
+        if not entries and escalator is not None and toc_pages:
+            # Chapter-looking TOC lines existed (toc_pages is non-empty) but
+            # every dotted anchor was mangled, so no entry survived the scan
+            # and neither fallback recovered a map. The model still reads the
+            # real TOC pages and can reconstruct it.
+            known_pages = sorted({n for n, _ in split_pages(markdown)})
+            entries = _drop_stoplist(
+                escalator(markdown, toc_pages, known_pages), language
+            )
 
     if not entries:
         return []

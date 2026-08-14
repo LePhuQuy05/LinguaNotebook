@@ -48,6 +48,12 @@ POST /api/v1/documents/upload → PDF to MinIO → Celery parse_pdf task
 - HPD degeneration fix: `_deduplicate_repeated_lines()` in `workers/parse_worker.py` collapses repeated lines before block parsing.
 - `utils/hpd_parser.py` wraps the HPD engine itself; `services/pdf_parser.py` is the text-layer/OCR router.
 
+## Curriculum extraction (feature 008)
+
+- Rule-based, language-agnostic: `services/curriculum_service.py::extract_curriculum(markdown, language=None, escalator=None)` scans the TOC via a merged structural-marker registry (課/章/部/장/과/Chapter/Unit/…), with body-heading and numbered-section workbook fallbacks. A content cross-check scores confidence: ≥0.7 trust the TOC, 0.3–0.7 prefer body headings, <0.3 → optional SLM escalation.
+- **Optional SLM escalation**: `services/curriculum_escalation.py` (lazy `llama-cpp-python`, CPU-only, cached per process) recovers a map when confidence is below `CONFIDENCE_LOW` (0.3). The model sees only the TOC pages + the Known-pages whitelist; every emitted page must be a whitelist member (hallucination impossible); temperature 0 + deterministic verification. No model file → `build_curriculum_escalator()` returns `None`, behaviour identical to before. Path: `CURRICULUM_LLM_PATH` (default `./model/curriculum-llm`, gitignored). Enablement: `docs/curriculum-escalation.md`.
+- `parse_worker.py::_save_curriculum_structure` wires it: `loop.run_in_executor(None, ...)` so model inference never blocks the worker's persistent event loop. Save is idempotent (DELETE-then-INSERT per document).
+
 ## Celery workers (backend/src/workers/)
 
 - `celery_app.py` routes by queue: parse_worker → `parsing`, embed_worker → `embedding`, lesson_worker → `lessons` (beat-scheduled: daily lesson generation, TTS cache warming).
