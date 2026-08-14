@@ -20,6 +20,12 @@ headings, or a TOC whose dotted anchors the OCR mangled — extraction
 falls back to body headings (``## N章 <topic>``), which carry the
 authoritative start page.
 
+The last fallback is for workbooks whose lessons are numbered but carry
+no marker at all — listening/grammar books (``## 2 ポイント理解``,
+``## 1 -A 間違えやすい音``). It requires at least three numbered
+headings and excludes answer-key rows (``## 1 番 答え4``), so a stray
+heading or a book's answer section cannot fabricate a map.
+
 The TOC result is then cross-checked against the body: the fraction of
 candidate titles that also reappear in the document's body pages is a
 soft confidence measure (the TOC pages themselves are excluded — their
@@ -136,6 +142,24 @@ _BODY_CJK_RE = re.compile(
 )
 _BODY_EN_RE = re.compile(
     rf"^\s*#{{1,3}}\s*(?:{_EN_MARKERS})\s+(\d{{1,2}})\s+(.+?)\s*$"
+)
+
+# Workbook fallback: numbered body headings (## N <title> / ## N -A <title>)
+# with no 課/章 marker. Unlike marker-based chapters, repeated numbers are
+# distinct lessons (numbering resets per section), so no dedup by number.
+_NUMBERED_MIN = 3
+_NUMBERED_SECTION_RE = re.compile(r"^\s*#{1,3}\s+(\d{1,2})\s+(.+?)\s*$")
+# Answer-key rows: the OCR glues the answer to 番, with or without a space
+# ("## 1 番 答え4", "## 3 番B51", bare "## 3 番"). A numbered title starting
+# with 番 is answer-key noise — except the real words 番組 (program) and
+# 番号 (number), which survive the negative lookahead.
+_ANSWER_KEY_RE = re.compile(r"^番(?!組|号)")
+# PaddleOCR reads a kanji title's furigana as space-separated kana groups
+# glued ahead of the kanji ("かんせつてき こた かたちゅうい 間接的な…"). Strip
+# that prefix. Contiguous kana words (あいさつ表現, はじめに) are kept: no
+# space precedes the kanji, so the pattern cannot match them.
+_KANA_PREFIX_RE = re.compile(
+    r"^((?:[぀-ゟ]+\s+){1,3}[぀-ゟ]+)\s+(?=[一-鿿])"
 )
 
 
@@ -316,6 +340,44 @@ def _extract_body_chapters(markdown: str, language: str | None = None) -> list[E
     return entries
 
 
+def _extract_numbered_sections(
+    markdown: str, language: str | None = None
+) -> list[Entry]:
+    """Workbook fallback: chapters from numbered body headings.
+
+    A listening/grammar workbook numbers its lessons (``## 2 ポイント理解``,
+    ``## 1 -A 間違えやすい音``) but carries no 課/章 marker, so neither the
+    TOC scan nor the marker-based body scan can see them. Conservative by
+    design: answer-key rows (``## 1 番 答え4``) and practice sections are
+    excluded, a kana reading prefix the OCR glued ahead of the kanji title
+    is stripped, and at least ``_NUMBERED_MIN`` headings must survive or no
+    map is produced. Repeated numbers are distinct lessons (the numbering
+    resets per section), so occurrences are never deduplicated.
+    """
+    entries: list[Entry] = []
+    stop = _stoplist(language)
+    for page_num, body in split_pages(markdown):
+        for line in body.split("\n"):
+            match = _NUMBERED_SECTION_RE.match(line.translate(_FULLWIDTH_DIGITS))
+            if not match:
+                continue
+            topic = match.group(2).strip()
+            if _ANSWER_KEY_RE.match(topic) or stop.search(topic):
+                continue
+            topic = _KANA_PREFIX_RE.sub("", topic, count=1)
+            if not topic:
+                continue
+            entries.append({
+                "part": "",
+                "chapter_num": int(match.group(1)),
+                "chapter_title": topic[:200],
+                "page": page_num,
+            })
+    if len(entries) < _NUMBERED_MIN:
+        return []
+    return entries
+
+
 def extract_curriculum(markdown: str, language: str | None = None) -> list[ChapterRow]:
     """Extract the curriculum map from a book's parsed markdown.
 
@@ -331,7 +393,9 @@ def extract_curriculum(markdown: str, language: str | None = None) -> list[Chapt
     The TOC dotted-anchor scan handles 課-based TOCs (GOI); a content
     cross-check confirms it (or prefers body headings when the OCR
     drifted the titles); when the scan finds nothing the extraction
-    falls back to body headings (章-based books like the N3 Kanji book).
+    falls back to body headings (章-based books like the N3 Kanji book),
+    then to numbered body headings (workbook-style books like the N3
+    CHOUKAI listening book).
     """
     toc_entries, toc_pages = _extract_entries(markdown, language)
     toc_entries = [e for e in toc_entries if e["page"]]
@@ -353,6 +417,8 @@ def extract_curriculum(markdown: str, language: str | None = None) -> list[Chapt
             entries = toc_entries
     else:
         entries = _extract_body_chapters(markdown, language)
+        if not entries:
+            entries = _extract_numbered_sections(markdown, language)
 
     if not entries:
         return []

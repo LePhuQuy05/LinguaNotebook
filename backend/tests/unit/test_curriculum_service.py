@@ -310,6 +310,136 @@ class TestOrderedStyle:
         ]
 
 
+class TestNumberedSections:
+    """Workbook fallback: lessons are numbered body headings (## N <title>,
+    ## N -A <title>) with no 課/章 marker — the Shinkanzen N3 CHOUKAI
+    listening book's shape. Fires only when both the TOC and the
+    marker-based body scan find nothing."""
+
+    def test_numbered_sections_become_chapters(self):
+        markdown = (
+            "--- Page 8 ---\n"
+            "## 2 ポイント理解\n"
+            "--- Page 17 ---\n"
+            "## 1 -A 間違えやすい音\n"
+            "--- Page 18 ---\n"
+            "## 1 -B アクセントやイントネーション\n"
+            "--- Page 26 ---\n"
+            "## 2 -A 許可や依頼の表現\n"
+            "--- Page 31 ---\n"
+            "## 4 あいさつ表現に注意する\n"
+        )
+        rows = extract_curriculum(markdown)
+
+        assert [
+            (r["chapter_num"], r["chapter_title"], r["page_start"], r["page_end"])
+            for r in rows
+        ] == [
+            (2, "ポイント理解", 8, 16),
+            (1, "-A 間違えやすい音", 17, 17),
+            (1, "-B アクセントやイントネーション", 18, 25),
+            (2, "-A 許可や依頼の表現", 26, 30),
+            (4, "あいさつ表現に注意する", 31, 31),
+        ]
+
+    def test_answer_key_rows_excluded(self):
+        """## N 番… rows (with a choice letter, 答え, or bare 番) are the
+        answer key — never chapters. The OCR glues the answer to 番 with or
+        without a space (番B51 vs 番 答え4)."""
+        markdown = (
+            "--- Page 8 ---\n## 2 ポイント理解\n"
+            "--- Page 17 ---\n## 1 -A 間違えやすい音\n"
+            "--- Page 18 ---\n## 1 -B アクセントやイントネーション\n"
+            "--- Page 26 ---\n## 2 -A 許可や依頼の表現\n"
+            "--- Page 100 ---\n## 1 番 B 49\n"
+            "--- Page 101 ---\n## 2 番 答え4\n"
+            "--- Page 102 ---\n## 3 番\n"
+            "--- Page 103 ---\n## 3 番B51\n"
+            "--- Page 104 ---\n## 5 番答え1\n"
+        )
+        rows = extract_curriculum(markdown)
+
+        assert [r["page_start"] for r in rows] == [8, 17, 18, 26]
+
+    def test_real_words_starting_with_ban_kept(self):
+        """番組 (program) and 番号 (number) are real lesson titles — the
+        answer-key guard must not swallow them."""
+        markdown = (
+            "--- Page 8 ---\n## 2 ポイント理解\n"
+            "--- Page 17 ---\n## 1 -A 間違えやすい音\n"
+            "--- Page 22 ---\n## 3 番号を聞き取る\n"
+            "--- Page 26 ---\n## 4 番組を聞いてメモする\n"
+        )
+        rows = extract_curriculum(markdown)
+
+        assert [r["chapter_title"] for r in rows][-2:] == [
+            "番号を聞き取る",
+            "番組を聞いてメモする",
+        ]
+
+    def test_kana_reading_prefix_stripped(self):
+        """PaddleOCR glues a furigana reading (space-separated kana groups)
+        ahead of the kanji title — strip it, keeping the kanji title."""
+        markdown = (
+            "--- Page 8 ---\n## 2 ポイント理解\n"
+            "--- Page 17 ---\n## 1 -A 間違えやすい音\n"
+            "--- Page 22 ---\n"
+            "## 3 かんせつてき こた かたちゅうい 間接的な答え方に注意する\n"
+        )
+        rows = extract_curriculum(markdown)
+
+        assert rows[-1]["chapter_title"] == "間接的な答え方に注意する"
+        assert rows[-1]["page_start"] == 22
+
+    def test_contiguous_kana_words_kept(self):
+        """あいさつ in あいさつ表現 is a real kana-spelled word — no space
+        separates it from the kanji, so it must not be treated as a reading
+        prefix and stripped."""
+        markdown = (
+            "--- Page 8 ---\n## 2 ポイント理解\n"
+            "--- Page 17 ---\n## 1 -A 間違えやすい音\n"
+            "--- Page 31 ---\n## 4 あいさつ表現に注意する\n"
+        )
+        rows = extract_curriculum(markdown)
+
+        assert rows[-1]["chapter_title"] == "あいさつ表現に注意する"
+
+    def test_practice_section_headings_skipped(self):
+        markdown = (
+            "--- Page 8 ---\n## 2 ポイント理解\n"
+            "--- Page 17 ---\n## 1 -A 間違えやすい音\n"
+            "--- Page 18 ---\n## 1 -B アクセントやイントネーション\n"
+            "--- Page 22 ---\n## 5 まとめテスト\n"
+        )
+        rows = extract_curriculum(markdown)
+
+        assert [r["chapter_num"] for r in rows] == [2, 1, 1]
+
+    def test_fewer_than_three_numbered_headings_empty(self):
+        """A book with one or two numbered headings is not a numbered-section
+        workbook — a stray heading must not fabricate a map."""
+        markdown = (
+            "--- Page 8 ---\n## 2 ポイント理解\n"
+            "--- Page 17 ---\n## 1 -A 間違えやすい音\n"
+        )
+        assert extract_curriculum(markdown) == []
+
+    def test_marker_book_unaffected_by_numbered_fallback(self):
+        """A 課 book still resolves through the TOC path — numbered headings
+        that also carry a marker are not double-counted."""
+        markdown = (
+            "--- Page 4 ---\n1課 人・体 .....14\n2課 天気 .....20\n"
+            "--- Page 14 ---\n## 1課 人・体\n"
+            "--- Page 20 ---\n## 2課 天気\n"
+        )
+        rows = extract_curriculum(markdown)
+
+        assert [(r["chapter_num"], r["chapter_title"], r["page_start"]) for r in rows] == [
+            (1, "人・体", 14),
+            (2, "天気", 20),
+        ]
+
+
 class TestCrossCheck:
     """Content-association cross-check: TOC candidate titles that also
     reappear in the document's body confirm the TOC scan. The signal is
