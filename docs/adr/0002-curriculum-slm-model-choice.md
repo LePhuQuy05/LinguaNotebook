@@ -1,0 +1,3 @@
+# 0002 — Curriculum SLM model choice: Qwen3-1.7B Q4 (Apache-2.0), CPU-only
+
+The documented default model for the curriculum escalation is **Qwen3-1.7B-Instruct Q4_K_M** (Apache-2.0, ~1.3 GB, ~25–50 tok/s CPU), configurable via `CURRICULUM_LLM_PATH`; **Qwen3-4B Q4** is documented as the accuracy option. **Qwen2.5-3B and Qwen2.5-VL-3B are rejected** — verified under the Qwen Research license, which is non-commercial and unusable in this MIT app. **IPEX-LLM** (Intel's Arc LLM path) was archived January 2026 and is not a runtime option. Inference is **CPU-only**: the Arc 140V iGPU is bandwidth-bound (~137 GB/s) and buys no throughput for ≤4B models, only build complexity.
