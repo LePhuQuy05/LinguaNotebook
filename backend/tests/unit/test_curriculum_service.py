@@ -197,3 +197,111 @@ class TestBodyHeadings:
         assert [r["chapter_num"] for r in rows] == [1, 2]
         assert rows[0]["page_start"] == 20  # TOC page, not the body heading page
         assert "人間関係1" in rows[0]["chapter_title"]  # clean TOC title
+
+
+class TestKorean:
+    """Korean textbook TOCs — 부/장/과 markers (registry, no language hint)."""
+
+    def test_lesson_marker(self):
+        markdown = "--- Page 4 ---\n1과 인사 .....5\n2과 가족 .....9\n"
+        rows = extract_curriculum(markdown)
+
+        assert [(r["chapter_num"], r["chapter_title"], r["page_start"]) for r in rows] == [
+            (1, "인사", 5),
+            (2, "가족", 9),
+        ]
+
+    def test_chapter_marker_body_heading(self):
+        markdown = "--- Page 8 ---\n## 1장 서론\n--- Page 12 ---\n## 2장 사회\n"
+        rows = extract_curriculum(markdown)
+
+        assert [(r["chapter_num"], r["chapter_title"], r["page_start"]) for r in rows] == [
+            (1, "서론", 8),
+            (2, "사회", 12),
+        ]
+
+    def test_part_marker(self):
+        markdown = "--- Page 4 ---\n제1부 인사와 가족\n1과 인사 .....5\n2과 가족 .....9\n"
+        rows = extract_curriculum(markdown)
+
+        assert rows[0]["part"].startswith("제1부")
+        assert [r["chapter_num"] for r in rows] == [1, 2]
+
+
+class TestChinese:
+    """Chinese textbook TOCs — 部/章/课/单元 markers."""
+
+    def test_simplified_lesson(self):
+        markdown = "--- Page 4 ---\n第1课 问候 .....5\n2课 家庭 .....9\n"
+        rows = extract_curriculum(markdown)
+
+        assert [(r["chapter_num"], r["chapter_title"], r["page_start"]) for r in rows] == [
+            (1, "问候", 5),
+            (2, "家庭", 9),
+        ]
+
+    def test_unit_body_heading(self):
+        markdown = "--- Page 20 ---\n## 1单元 你好\n--- Page 26 ---\n## 2单元 家庭\n"
+        rows = extract_curriculum(markdown)
+
+        assert [(r["chapter_num"], r["chapter_title"], r["page_start"]) for r in rows] == [
+            (1, "你好", 20),
+            (2, "家庭", 26),
+        ]
+
+
+class TestEnglish:
+    """English/Latin textbook TOCs — part/chapter/unit/lesson markers."""
+
+    def test_chapter_with_dots(self):
+        markdown = "--- Page 4 ---\nChapter 1 Introduction .....5\nChapter 2 The Family .....9\n"
+        rows = extract_curriculum(markdown)
+
+        assert [(r["chapter_num"], r["chapter_title"], r["page_start"]) for r in rows] == [
+            (1, "Introduction", 5),
+            (2, "The Family", 9),
+        ]
+
+    def test_part_and_unit(self):
+        markdown = (
+            "--- Page 4 ---\n"
+            "Part I Foundations\n"
+            "Unit 1 Greetings .....5\n"
+            "Unit 2 Family .....9\n"
+        )
+        rows = extract_curriculum(markdown)
+
+        assert rows[0]["part"] == "Part I Foundations"
+        assert [r["chapter_num"] for r in rows] == [1, 2]
+
+
+class TestOrderedStyle:
+    """Numbered TOCs without dot leaders."""
+
+    def test_marker_with_trailing_page(self):
+        markdown = "--- Page 4 ---\nChapter 1 Introduction 5\nChapter 2 The Family 9\n"
+        rows = extract_curriculum(markdown)
+
+        assert [(r["chapter_num"], r["chapter_title"], r["page_start"]) for r in rows] == [
+            (1, "Introduction", 5),
+            (2, "The Family", 9),
+        ]
+
+    def test_numbered_prefix_entries(self):
+        markdown = "--- Page 4 ---\n1. Introduction 5\n2. The Family 9\n"
+        rows = extract_curriculum(markdown)
+
+        assert [(r["chapter_num"], r["chapter_title"], r["page_start"]) for r in rows] == [
+            (1, "Introduction", 5),
+            (2, "The Family", 9),
+        ]
+
+    def test_tiny_trailing_number_is_list_index(self):
+        """A trailing number below the page floor (a list index or
+        footnote, not a page) is not read as a chapter page."""
+        markdown = "--- Page 4 ---\n1. Introduction 2\n2. The Family 5\n"
+        rows = extract_curriculum(markdown)
+
+        assert [(r["chapter_num"], r["chapter_title"], r["page_start"]) for r in rows] == [
+            (2, "The Family", 5),
+        ]
