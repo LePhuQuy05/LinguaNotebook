@@ -20,6 +20,15 @@ headings, or a TOC whose dotted anchors the OCR mangled — extraction
 falls back to body headings (``## N章 <topic>``), which carry the
 authoritative start page.
 
+The TOC result is then cross-checked against the body: the fraction of
+candidate titles that also reappear in the document's body pages is a
+soft confidence measure (the TOC pages themselves are excluded — their
+titles trivially appear there). Gate: ≥0.7 trust the TOC as-is; 0.3–0.7
+the OCR drifted some titles, so body headings are preferred (no chapter
+is dropped on title drift); <0.3 the TOC cannot be confirmed, yielding
+an empty map — the optional SLM escalation hooks in here (ticket 03).
+A document with no body pages has nothing to refute the scan → trusted.
+
 Chapter page ranges come from consecutive chapter pages (never array
 indexes). Entries that are practice/mock sections are skipped so ranges
 bridge them. Unknown structure → empty map; lessons fall back to
@@ -40,6 +49,10 @@ LEVEL_PART = "part"
 LEVEL_CHAPTER = "chapter"
 LEVEL_UNIT = "unit"
 LEVEL_LESSON = "lesson"
+
+# Content-association cross-check gate (soft confidence signal).
+CONFIDENCE_HIGH = 0.7
+CONFIDENCE_LOW = 0.3
 
 
 class Entry(TypedDict):
@@ -145,6 +158,34 @@ def _stoplist(language: str | None) -> re.Pattern[str]:
     return _DEFAULT_STOPLIST
 
 
+def _normalize(text: str) -> str:
+    """A title as it reappears in the body may differ in digit width and
+    spacing (１ vs 1, 半角 vs 全角 spaces) — fold those away for the
+    soft cross-check."""
+    return text.translate(_FULLWIDTH_DIGITS).replace(" ", "").replace("　", "")
+
+
+def _cross_check_confidence(
+    entries: list[Entry], toc_pages: set[int], markdown: str
+) -> float:
+    """Soft cross-check: the fraction of TOC candidate titles that also
+    reappear in the document's body pages.
+
+    Pages that carried the TOC entries themselves are excluded — their
+    titles trivially appear there, so including them would make every
+    TOC self-confirming. With no body pages at all there is nothing to
+    refute the scan, so it is trusted (confidence 1.0).
+    """
+    body = [body for n, body in split_pages(markdown) if n not in toc_pages]
+    if not body:
+        return 1.0
+    normalized_body = _normalize("\n".join(body))
+    matched = sum(
+        1 for e in entries if _normalize(e["chapter_title"]) in normalized_body
+    )
+    return matched / len(entries)
+
+
 def _match_entry(line: str) -> tuple[int, str, int | None] | None:
     """Return ``(chapter_num, topic, page)`` when line is a chapter entry.
 
@@ -172,9 +213,17 @@ def _match_entry(line: str) -> tuple[int, str, int | None] | None:
     return None
 
 
-def _extract_entries(markdown: str, language: str | None = None) -> list[Entry]:
-    """Scan every page for part headers and chapter entries."""
+def _extract_entries(
+    markdown: str, language: str | None = None
+) -> tuple[list[Entry], set[int]]:
+    """Scan every page for part headers and chapter entries.
+
+    Returns ``(entries, toc_pages)`` — the second is the set of pages
+    that carried at least one chapter entry, i.e. the TOC pages, which
+    the cross-check must exclude from the body.
+    """
     entries: list[Entry] = []
+    toc_pages: set[int] = set()
     current_part = ""
     stop = _stoplist(language)
     for page_num, body in split_pages(markdown):
@@ -191,6 +240,7 @@ def _extract_entries(markdown: str, language: str | None = None) -> list[Entry]:
                     current_part = line.strip()[:200]
                 continue
 
+            toc_pages.add(page_num)  # any chapter-looking line marks a TOC page
             num, topic, inline_page = entry
             if stop.search(topic):
                 continue
@@ -220,7 +270,7 @@ def _extract_entries(markdown: str, language: str | None = None) -> list[Entry]:
                 "chapter_title": topic[:500],
                 "page": page,
             })
-    return entries
+    return entries, toc_pages
 
 
 def _extract_body_chapters(markdown: str, language: str | None = None) -> list[Entry]:
@@ -278,13 +328,32 @@ def extract_curriculum(markdown: str, language: str | None = None) -> list[Chapt
     chapter pages; the final chapter extends to the document's last
     page. Empty list when no chapters are found (conservative).
 
-    The TOC dotted-anchor scan handles 課-based TOCs (GOI); when it
-    finds nothing the extraction falls back to body headings (章-based
-    books like the N3 Kanji book, or any TOC the OCR mangled).
+    The TOC dotted-anchor scan handles 課-based TOCs (GOI); a content
+    cross-check confirms it (or prefers body headings when the OCR
+    drifted the titles); when the scan finds nothing the extraction
+    falls back to body headings (章-based books like the N3 Kanji book).
     """
-    entries = [e for e in _extract_entries(markdown, language) if e["page"]]
-    if not entries:
+    toc_entries, toc_pages = _extract_entries(markdown, language)
+    toc_entries = [e for e in toc_entries if e["page"]]
+
+    if toc_entries:
+        confidence = _cross_check_confidence(toc_entries, toc_pages, markdown)
+        if confidence < CONFIDENCE_LOW:
+            # The TOC cannot be confirmed against the body — no map. The
+            # current lesson fallback runs; the SLM escalation hooks in
+            # here (ticket 03).
+            return []
+        if confidence < CONFIDENCE_HIGH:
+            # The OCR drifted some titles: prefer the body headings (no
+            # chapter is dropped on title drift); keep the TOC only if
+            # the body carries no readable headings at all.
+            body = _extract_body_chapters(markdown, language)
+            entries = body if body else toc_entries
+        else:
+            entries = toc_entries
+    else:
         entries = _extract_body_chapters(markdown, language)
+
     if not entries:
         return []
 

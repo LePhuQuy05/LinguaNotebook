@@ -184,13 +184,16 @@ class TestBodyHeadings:
 
     def test_readable_toc_preferred_over_body_headings(self):
         """A book whose 課 TOC is readable keeps its TOC titles and pages
-        even though the body also carries N課 headings."""
+        even though the body also carries N課 headings. (Both chapters'
+        body headings are present, so the cross-check confirms the TOC —
+        this is what makes the TOC trustworthy.)"""
         markdown = (
             "--- Page 4 ---\n"
             "第1部 話題別\n"
             "1課 人間関係1：家族と友達、性格 .....20\n"
             "2課 天気 .....76\n"
             "--- Page 20 ---\n## １課にんげん…人間関係1：家族と友達、性格\n"
+            "--- Page 76 ---\n## 2課 天気\n"
         )
         rows = extract_curriculum(markdown)
 
@@ -305,3 +308,69 @@ class TestOrderedStyle:
         assert [(r["chapter_num"], r["chapter_title"], r["page_start"]) for r in rows] == [
             (2, "The Family", 5),
         ]
+
+
+class TestCrossCheck:
+    """Content-association cross-check: TOC candidate titles that also
+    reappear in the document's body confirm the TOC scan. The signal is
+    soft — no chapter is dropped because OCR made its title differ. Gate:
+    ≥0.7 trust the TOC; 0.3–0.7 prefer body headings; <0.3 no map (the
+    escalation branch is wired by ticket 03)."""
+
+    def test_readable_toc_high_confidence_wins(self):
+        markdown = (
+            "--- Page 4 ---\n"
+            "1課 人間関係 .....20\n"
+            "2課 天気 .....76\n"
+            "--- Page 20 ---\n"
+            "## 1課 人間関係\n本文\n"
+            "--- Page 76 ---\n"
+            "## 2課 天気\n本文\n"
+        )
+        rows = extract_curriculum(markdown)
+
+        assert [(r["chapter_num"], r["chapter_title"], r["page_start"]) for r in rows] == [
+            (1, "人間関係", 20),
+            (2, "天気", 76),
+        ]
+
+    def test_title_drift_prefers_body_headings(self):
+        """One of two TOC titles fails to reappear (0.5 confidence) — the
+        body headings win, with their drifted titles kept, not dropped."""
+        markdown = (
+            "--- Page 4 ---\n"
+            "1課 人間関係 .....20\n"
+            "2課 天気 .....76\n"
+            "--- Page 20 ---\n"
+            "## 1課 にんげん…人間関係\n本文\n"
+            "--- Page 76 ---\n"
+            "## 2課 てんき\n本文\n"
+        )
+        rows = extract_curriculum(markdown)
+
+        assert [(r["chapter_num"], r["chapter_title"], r["page_start"]) for r in rows] == [
+            (1, "にんげん…人間関係", 20),
+            (2, "てんき", 76),
+        ]
+
+    def test_low_confidence_yields_empty_map(self):
+        """Neither TOC title reappears (<0.3) — no map, so the current
+        lesson fallback runs. (The SLM escalation lives in ticket 03.)"""
+        markdown = (
+            "--- Page 4 ---\n"
+            "1課 人間関係 .....20\n"
+            "2課 天気 .....76\n"
+            "--- Page 20 ---\n"
+            "## 別の話題\n本文\n"
+            "--- Page 76 ---\n"
+            "## また別の話題\n本文\n"
+        )
+        assert extract_curriculum(markdown) == []
+
+    def test_no_body_pages_trusts_the_scan(self):
+        """A document that is only TOC pages (e.g. the golden GOI
+        fixture) has no body to refute the scan — the TOC is trusted."""
+        markdown = "--- Page 4 ---\n1課 人間関係 .....20\n2課 天気 .....76\n"
+        rows = extract_curriculum(markdown)
+
+        assert [r["chapter_num"] for r in rows] == [1, 2]
