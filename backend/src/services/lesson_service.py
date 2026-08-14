@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.document_structure import DocumentStructure
 from src.models.learning import ItemType, Lesson, LessonItem, LessonStatus
 from src.models.schedule import Schedule
+from src.services.item_generators import get_item_generator
 from src.services.rag_service import hybrid_search
 
 logger = logging.getLogger(__name__)
@@ -198,14 +199,22 @@ async def _generate_chapter_lesson(
 
     # Chunks stay in book order; the item type follows the schedule's
     # content types (round-robin) so a reading/grammar-heavy schedule
-    # isn't silently overridden with vocabulary.
+    # isn't silently overridden with vocabulary. The 2× retrieval buffer
+    # absorbs chunks the generator skips (e.g. empty content), so the
+    # lesson still fills to `total_items`.
     item_types = schedule.content_types or ["vocabulary"]
     items: list[LessonItem] = []
-    for order, sr in enumerate(results[:total_items]):
+    order = 0
+    for sr in results:
+        if order >= total_items:
+            break
         content_type = item_types[order % len(item_types)]
         item = _create_lesson_item(lesson.id, content_type, sr, order)
+        if item is None:
+            continue  # generator skipped the chunk (e.g. empty content)
         db.add(item)
         items.append(item)
+        order += 1
     logger.info(
         f"Chapter lesson: {chapter.chapter_title[:LOG_TITLE_WIDTH]} (pages "
         f"{chapter.page_start}-{chapter.page_end}) → {len(items)} items"
@@ -243,6 +252,8 @@ async def _generate_generic_lesson(
 
         for sr in search_results.get("results", []):
             item = _create_lesson_item(lesson.id, content_type, sr, order)
+            if item is None:
+                continue  # generator skipped the chunk
             db.add(item)
             items.append(item)
             order += 1
@@ -300,8 +311,15 @@ async def answer_item(
     item.user_response = response
     item.time_spent_seconds = time_spent_seconds
 
-    # Evaluate correctness
-    if item.item_type == ItemType.flashcard and self_rating is not None:
+    # Evaluate correctness. Structured multiple-choice items (feature 009)
+    # are graded by exact option-index match; flashcard self-rating and
+    # legacy items (no `data`) keep their original grading.
+    payload = item.data or {}
+    if isinstance(payload, dict) and payload.get("options"):
+        item.is_correct = response.strip() == str(payload.get("correct_index"))
+        if self_rating is not None:
+            item.self_rating = self_rating
+    elif item.item_type == ItemType.flashcard and self_rating is not None:
         item.self_rating = self_rating
         item.is_correct = self_rating >= 3  # SM-2 graduation threshold
     elif item.item_type == ItemType.listening:
@@ -369,50 +387,29 @@ def _content_type_query(content_type: str) -> str:
     return queries.get(content_type, "learning content")
 
 
-# Schedule content types map onto lesson item types. Vocabulary has no
-# ItemType of its own — it is presented as a recall flashcard
-# ("What does this term mean?").
-_ITEM_TYPE_BY_CONTENT_TYPE: dict[str, ItemType] = {
-    "vocabulary": ItemType.flashcard,
-    "reading": ItemType.reading,
-    "grammar": ItemType.grammar,
-    "listening": ItemType.listening,
-}
-
-
 def _create_lesson_item(
     lesson_id: str,
     content_type: str,
     search_result: dict,
     order: int,
-) -> LessonItem:
-    """Create a lesson item from a RAG search result."""
-    item_type = _ITEM_TYPE_BY_CONTENT_TYPE.get(content_type, ItemType.flashcard)
-    content = search_result.get("content", "")
-    chunk_id = search_result.get("chunk_id")
+) -> LessonItem | None:
+    """Create a lesson item from a RAG search result via the generator seam.
 
-    # Generate question based on content type
-    if item_type == ItemType.flashcard:
-        question = "What does this term mean?"
-        answer = content
-    elif item_type == ItemType.reading:
-        question = "What is the main idea of this passage?"
-        answer = content[:200] + "..."
-    elif item_type == ItemType.grammar:
-        question = "Complete the sentence using the correct form"
-        answer = content
-    elif item_type == ItemType.listening:
-        question = "Listen to the passage and answer: what is the topic?"
-        answer = content
-    else:
-        question = "Review this content"
-        answer = content
-
+    The generator owns the content-type → item-type mapping (vocabulary →
+    flashcard, reading/grammar/listening → multiple choice) and returns
+    None (skipped) when a chunk cannot produce an item, e.g. empty content.
+    """
+    generator = get_item_generator()
+    generated = generator.generate(search_result, content_type)
+    if not generated:
+        return None
+    item = generated[0]
     return LessonItem(
         lesson_id=lesson_id,
-        knowledge_segment_id=chunk_id,
-        item_type=item_type,
+        knowledge_segment_id=search_result.get("chunk_id"),
+        item_type=ItemType(item.item_type),
         order_index=order,
-        question=question,
-        correct_answer=answer,
+        question=item.question,
+        correct_answer=item.correct_answer,
+        data=item.payload or None,
     )

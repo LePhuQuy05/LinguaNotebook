@@ -141,6 +141,7 @@ async def daily_lesson(
                 "order_index": i.order_index,
                 "question": i.question,
                 "correct_answer": i.correct_answer,
+                "data": i.data,
                 "completed": i.completed,
                 "is_correct": i.is_correct,
                 "source": item_sources.get(i.knowledge_segment_id),

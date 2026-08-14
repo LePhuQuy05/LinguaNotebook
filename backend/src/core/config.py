@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     # HPD Model
     hpd_model_path: str = "./model"
 
+    # Lesson item generator (feature 009): "rule" (always-on floor) is
+    # the default; "slm"/"both" are wired by ticket 05.
+    lesson_generator: str = "rule"
+
     # Optional SLM for curriculum escalation (feature 008, ticket 03):
     # a directory containing a .gguf, or the path to a .gguf file. Empty /
     # unresolvable → escalation is disabled and extraction degrades to the

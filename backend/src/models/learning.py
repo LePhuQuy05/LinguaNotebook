@@ -4,7 +4,7 @@ import enum
 import uuid
 from datetime import date, datetime, timezone
 
-from sqlalchemy import Boolean, Date, DateTime, Enum, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, Date, DateTime, Enum, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.core.database import Base
@@ -68,6 +68,9 @@ class LessonItem(Base):
     order_index: Mapped[int] = mapped_column(Integer, nullable=False)
     question: Mapped[str] = mapped_column(Text, nullable=False)
     correct_answer: Mapped[str] = mapped_column(Text, nullable=False)
+    # Structured per-type payload (feature 009): flashcard/reading/grammar/
+    # listening. Old items (no `data`) keep rendering and answering as before.
+    data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     user_response: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_correct: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     self_rating: Mapped[int | None] = mapped_column(Integer, nullable=True)

@@ -6,10 +6,11 @@ generic content-type retrieval when there is no map or no chunks yet.
 """
 
 import types
+from datetime import date
 
 import pytest
 
-from src.models.learning import ItemType
+from src.models.learning import ItemType, Lesson, LessonItem, LessonStatus
 from src.services import lesson_service
 from src.services.lesson_service import _chapter_query, _next_chapter
 
@@ -244,3 +245,196 @@ class TestGenerateLesson:
         assert lesson.document_id is None
         generic = [c for c in setup["calls"] if not c.get("document_id")]
         assert generic, "generic retrieval must run when there is no map"
+
+    @pytest.mark.asyncio
+    async def test_items_carry_structured_data_from_generator(self, monkeypatch, setup):
+        monkeypatch.setattr(lesson_service, "_next_chapter", self._fake_next_chapter())
+        db = FakeDB()
+
+        await lesson_service.generate_lesson(
+            db, "u",
+            _schedule(content_types=["reading"], daily_item_count=2),
+            types.SimpleNamespace(),
+        )
+
+        items = [a for a in db.added if type(a).__name__ == "LessonItem"]
+        assert len(items) == 2
+        for item in items:
+            assert item.data is not None
+            assert len(item.data["options"]) == 4
+            assert item.data["options"][item.data["correct_index"]] == item.correct_answer
+
+    @pytest.mark.asyncio
+    async def test_chapter_path_backfills_skipped_chunks(self, monkeypatch):
+        async def fake_search(user_id, query, **kwargs):
+            # 6 results; every other chunk is empty (skipped by the generator).
+            return {"results": [
+                {"chunk_id": f"c{i}", "content": ("" if i % 2 else f"内容{i}"),
+                 "document_id": "d1", "block_type": "paragraph",
+                 "language": "ja", "difficulty": "intermediate",
+                 "page_start": 6 + i, "chunk_index": i, "score": 1.0}
+                for i in range(6)
+            ]}
+
+        monkeypatch.setattr(lesson_service, "hybrid_search", fake_search)
+        monkeypatch.setattr(lesson_service, "_next_chapter", self._fake_next_chapter())
+        db = FakeDB()
+
+        await lesson_service.generate_lesson(
+            db, "u", _schedule(daily_item_count=3), types.SimpleNamespace()
+        )
+
+        # The 2× retrieval buffer absorbs the skipped chunks, so the lesson
+        # still fills to the daily item count instead of silently under-filling.
+        items = [a for a in db.added if type(a).__name__ == "LessonItem"]
+        assert len(items) == 3
+        assert [i.correct_answer for i in items] == ["内容0", "内容2", "内容4"]
+
+
+    def test_create_lesson_item_skips_empty_chunk(self):
+        # The generator skips empty content; the lesson item is not created.
+        item = lesson_service._create_lesson_item(
+            "l1", "vocabulary", {"chunk_id": "c0", "content": ""}, 0
+        )
+        assert item is None
+
+    def test_create_lesson_item_defaults_unknown_content_type_to_flashcard(self):
+        # Unknown content types degrade to the flashcard safe default, so
+        # ItemType(item.item_type) never raises ValueError.
+        item = lesson_service._create_lesson_item(
+            "l1", "mystery", {"chunk_id": "c0", "content": "内容0"}, 0
+        )
+        assert item is not None
+        assert item.item_type == ItemType.flashcard
+        assert item.data["term"] == "内容0"
+
+
+class TestCompleteLesson:
+    @pytest.mark.asyncio
+    async def test_scores_answered_items(self):
+        lesson = Lesson(
+            id="l1", user_id="u", schedule_id="s1",
+            date=date(2026, 1, 1), status=LessonStatus.pending,
+        )
+        items = [
+            LessonItem(id="i1", lesson_id="l1", item_type=ItemType.flashcard,
+                       order_index=0, question="q", correct_answer="a",
+                       completed=True, is_correct=True),
+            LessonItem(id="i2", lesson_id="l1", item_type=ItemType.flashcard,
+                       order_index=1, question="q", correct_answer="a",
+                       completed=True, is_correct=False),
+            LessonItem(id="i3", lesson_id="l1", item_type=ItemType.reading,
+                       order_index=2, question="q", correct_answer="a",
+                       completed=False, is_correct=None),
+        ]
+
+        class _DB(FakeDB):
+            def __init__(self):
+                super().__init__()
+                self.lesson = lesson
+                self.items = items
+
+            async def execute(self, statement) -> FakeResult:
+                first = statement.get_final_froms()[0]
+                name = getattr(first, "name", None)
+                return FakeResult(self.lesson if name == "lessons" else self.items)
+
+        result = await lesson_service.complete_lesson(_DB(), "l1", "u")
+
+        assert lesson.score == 0.5
+        assert lesson.status == LessonStatus.completed
+        assert lesson.completed_at is not None
+        assert result["score"] == 0.5
+        assert result["words_learned"] == 1
+
+
+class TestAnswerItem:
+    class _FakeDB(FakeDB):
+        def __init__(self, item):
+            super().__init__()
+            self.item = item
+
+        async def execute(self, statement) -> FakeResult:
+            return FakeResult(self.item)
+
+    @staticmethod
+    def _fake_db(item):
+        return TestAnswerItem._FakeDB(item)
+
+    @staticmethod
+    def _item(item_type, data=None, correct_answer="answer"):
+        return LessonItem(
+            lesson_id="l1",
+            item_type=item_type,
+            correct_answer=correct_answer,
+            data=data,
+            question="q",
+            order_index=0,
+        )
+
+    @pytest.mark.asyncio
+    async def test_mc_item_graded_by_exact_option_index(self):
+        item = self._item(
+            ItemType.grammar,
+            data={"options": ["a", "b", "c", "d"], "correct_index": 2},
+        )
+        result = await lesson_service.answer_item(
+            self._fake_db(item), "l1", "i1", "u", "2"
+        )
+        assert result["is_correct"] is True
+        assert item.completed is True
+
+    @pytest.mark.asyncio
+    async def test_mc_item_records_self_rating_too(self):
+        item = self._item(
+            ItemType.grammar,
+            data={"options": ["a", "b", "c", "d"], "correct_index": 1},
+            correct_answer="b",
+        )
+        result = await lesson_service.answer_item(
+            self._fake_db(item), "l1", "i1", "u", "1", self_rating=5
+        )
+        assert result["is_correct"] is True
+        assert item.self_rating == 5
+
+    @pytest.mark.asyncio
+    async def test_mc_wrong_index_grades_wrong(self):
+        # The generator sets `correct_answer` to the correct option text.
+        item = self._item(
+            ItemType.reading,
+            data={"options": ["a", "b", "c", "d"], "correct_index": 2},
+            correct_answer="c",
+        )
+        result = await lesson_service.answer_item(
+            self._fake_db(item), "l1", "i1", "u", "1"
+        )
+        assert result["is_correct"] is False
+        assert result["correct_answer"] == "c"
+
+    @pytest.mark.asyncio
+    async def test_structured_flashcard_keeps_self_rating(self):
+        item = self._item(
+            ItemType.flashcard,
+            data={"term": "家族", "reading": "かぞく", "definition": "family", "example": ""},
+        )
+        result = await lesson_service.answer_item(
+            self._fake_db(item), "l1", "i1", "u", "", self_rating=4
+        )
+        assert result["is_correct"] is True
+        assert item.self_rating == 4
+
+    @pytest.mark.asyncio
+    async def test_old_item_without_data_keeps_exact_match(self):
+        item = self._item(ItemType.reading, data=None, correct_answer="家族")
+        result = await lesson_service.answer_item(
+            self._fake_db(item), "l1", "i1", "u", "家族"
+        )
+        assert result["is_correct"] is True
+
+    @pytest.mark.asyncio
+    async def test_old_listening_keeps_keyword_grading(self):
+        item = self._item(ItemType.listening, data=None, correct_answer="sunny weather")
+        result = await lesson_service.answer_item(
+            self._fake_db(item), "l1", "i1", "u", "It is sunny today"
+        )
+        assert result["is_correct"] is True
