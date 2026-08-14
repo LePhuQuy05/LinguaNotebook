@@ -6,6 +6,21 @@ import time
 from datetime import UTC, datetime
 
 from src.core.redis import redis_client
+
+# Import every model so SQLAlchemy's mapper is fully configured as soon as
+# this module loads. Document.user_id is a string FK to "users"; if the
+# User model is never imported (a fresh process running only embed tasks)
+# the mapper can't resolve it and every embed crashes with
+# NoReferencedTableError before reaching the DB. A lazy import inside
+# _run() would register them too, but module-level makes it a module
+# invariant — and lets a regression test assert it in a fresh process.
+from src.models.document import ContentBlock, Document, EmbedStatus
+from src.models.knowledge_segment import KnowledgeSegment  # noqa: F401
+from src.models.learning import Lesson, LessonItem  # noqa: F401
+from src.models.schedule import Schedule  # noqa: F401
+from src.models.srs import SRSCard  # noqa: F401
+from src.models.sync import Device, ProgressSnapshot, SyncLog  # noqa: F401
+from src.models.user import User  # noqa: F401
 from src.services.embed_service import embed_and_index_chunks
 from src.services.parser_service import (
     REDIS_EMBED_PROGRESS_PREFIX,
@@ -39,8 +54,9 @@ def embed_document_task(self, document_id: str, user_id: str | None = None) -> d
     """
     from sqlalchemy import select
 
+    # AsyncSessionLocal stays lazy: tests monkeypatch it on its source
+    # module, and a module-level binding would pin the unpatched object.
     from src.core.database import AsyncSessionLocal
-    from src.models.document import ContentBlock, Document, EmbedStatus
 
     async def _publish(progress: dict) -> None:
         """Write one embed-progress frame to Redis (refresh TTL each batch)."""

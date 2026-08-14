@@ -193,3 +193,41 @@ def test_failure_sets_embed_failed_and_publishes(env, monkeypatch):
     last = env["redis_writes"][-1]["value"]
     assert last["status"] == "embed_failed"
     assert "embed exploded" in last["error"]
+
+
+def test_module_import_registers_users_table_in_fresh_process():
+    """Regression (2026-08-14): a fresh process running only the embed task
+    crashed before reaching the DB with
+
+        NoReferencedTableError: Foreign key associated with column
+        'documents.user_id' could not find table 'users'
+
+    because the worker never imported the User model, so the string FK on
+    Document.user_id couldn't resolve. The worker must register every model
+    at import time. Runs in a subprocess so the SQLAlchemy mapper registry
+    isn't already populated by other test modules — compiling a real
+    select(Document) triggers mapper configuration, which raises if the
+    `users` table is unknown.
+    """
+    import os
+    import subprocess
+    import sys
+
+    script = (
+        "import src.workers.embed_worker\n"
+        "from sqlalchemy import select\n"
+        "from src.models.document import Document\n"
+        "str(select(Document))\n"  # compile → configure_mappers
+        "print('MAPPER_OK')\n"
+    )
+    env = dict(os.environ, PYTHONPATH=os.getcwd())
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        cwd=os.getcwd(),
+        env=env,
+        timeout=120,
+    )
+    assert proc.returncode == 0, f"mapper left unconfigured:\n{proc.stderr}"
+    assert "MAPPER_OK" in proc.stdout
